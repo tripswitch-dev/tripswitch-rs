@@ -310,14 +310,12 @@ impl Client {
     pub async fn execute<T, E, Fut>(
         &self,
         task: impl FnOnce() -> Fut,
-        opts: Option<ExecuteOptions>,
+        opts: ExecuteOptions,
     ) -> Result<T, ExecuteError<E>>
     where
         E: std::error::Error + Send + 'static,
         Fut: Future<Output = Result<T, E>>,
     {
-        let opts = opts.unwrap_or_default();
-
         // 1. Validate no conflicting options
         if opts.breakers.is_some() && opts.select_breakers.is_some() {
             return Err(Error::ConflictingOptions(
@@ -803,7 +801,10 @@ mod tests {
     async fn execute_no_breakers_passthrough() {
         let (client, _rx) = new_test_client();
         let result: Result<String, std::io::Error> = client
-            .execute(|| async { Ok("success".to_string()) }, None)
+            .execute(
+                || async { Ok("success".to_string()) },
+                ExecuteOptions::default(),
+            )
             .await
             .map_err(|e| match e {
                 ExecuteError::Task(e) => e,
@@ -826,7 +827,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("success".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["test-breaker"])),
+                ExecuteOptions::new().breakers(&["test-breaker"]),
             )
             .await;
         assert!(result.is_ok());
@@ -845,7 +846,7 @@ mod tests {
                     task_ran = true;
                     Ok::<_, std::io::Error>("should not run".to_string())
                 },
-                Some(ExecuteOptions::new().breakers(&["test-breaker"])),
+                ExecuteOptions::new().breakers(&["test-breaker"]),
             )
             .await;
 
@@ -863,7 +864,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("nope".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["hb"])),
+                ExecuteOptions::new().breakers(&["hb"]),
             )
             .await;
         assert!(result.unwrap_err().is_breaker_error());
@@ -877,7 +878,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("allowed".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["hb"])),
+                ExecuteOptions::new().breakers(&["hb"]),
             )
             .await;
         assert_eq!(result.unwrap(), "allowed");
@@ -891,7 +892,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("success".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["nonexistent"])),
+                ExecuteOptions::new().breakers(&["nonexistent"]),
             )
             .await;
         assert_eq!(result.unwrap(), "success");
@@ -906,7 +907,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("nope".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["a", "b"])),
+                ExecuteOptions::new().breakers(&["a", "b"]),
             )
             .await;
         assert!(result.unwrap_err().is_breaker_error());
@@ -921,7 +922,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("success".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["a", "b"])),
+                ExecuteOptions::new().breakers(&["a", "b"]),
             )
             .await;
         assert_eq!(result.unwrap(), "success");
@@ -939,7 +940,7 @@ mod tests {
             let result = client
                 .execute(
                     || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                    Some(ExecuteOptions::new().breakers(&["a", "b"])),
+                    ExecuteOptions::new().breakers(&["a", "b"]),
                 )
                 .await;
             if result.is_ok() {
@@ -964,7 +965,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("nope".to_string()) },
-                Some(opts),
+                opts,
             )
             .await;
         let err = result.unwrap_err();
@@ -987,7 +988,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("nope".to_string()) },
-                Some(opts),
+                opts,
             )
             .await;
         let err = result.unwrap_err();
@@ -1009,11 +1010,9 @@ mod tests {
                     tokio::time::sleep(Duration::from_millis(5)).await;
                     Ok::<_, std::io::Error>("ok".to_string())
                 },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency),
             )
             .await
             .unwrap();
@@ -1032,7 +1031,7 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(ExecuteOptions::new().router("r1")),
+                ExecuteOptions::new().router("r1"),
             )
             .await
             .unwrap();
@@ -1047,7 +1046,7 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(ExecuteOptions::new().metric("latency", MetricValue::Latency)),
+                ExecuteOptions::new().metric("latency", MetricValue::Latency),
             )
             .await
             .unwrap();
@@ -1066,13 +1065,11 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency)
-                        .tag("env", "override")
-                        .tag("endpoint", "/users"),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency)
+                    .tag("env", "override")
+                    .tag("endpoint", "/users"),
             )
             .await
             .unwrap();
@@ -1094,12 +1091,10 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency)
-                        .trace_id("trace-abc-123"),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency)
+                    .trace_id("trace-abc-123"),
             )
             .await
             .unwrap();
@@ -1115,13 +1110,11 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency)
-                        .metric("count", MetricValue::Static(1.0))
-                        .metric("amount", MetricValue::Static(99.99)),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency)
+                    .metric("count", MetricValue::Static(1.0))
+                    .metric("amount", MetricValue::Static(99.99)),
             )
             .await
             .unwrap();
@@ -1151,11 +1144,9 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("queue_depth", MetricValue::Dynamic(Box::new(|| 42.0))),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("queue_depth", MetricValue::Dynamic(Box::new(|| 42.0))),
             )
             .await
             .unwrap();
@@ -1172,11 +1163,9 @@ mod tests {
         let _result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("ok".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("custom-router-123")
-                        .metric("latency", MetricValue::Latency),
-                ),
+                ExecuteOptions::new()
+                    .router("custom-router-123")
+                    .metric("latency", MetricValue::Latency),
             )
             .await
             .unwrap();
@@ -1192,11 +1181,9 @@ mod tests {
         let result = client
             .execute(
                 || async { Err::<String, _>(std::io::Error::other("task failed")) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency),
             )
             .await;
 
@@ -1213,7 +1200,7 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("success".to_string()) },
-                Some(ExecuteOptions::new().breakers(&["b1"])),
+                ExecuteOptions::new().breakers(&["b1"]),
             )
             .await;
 
@@ -1228,11 +1215,9 @@ mod tests {
         let result = client
             .execute(
                 || async { Ok::<_, std::io::Error>("success".to_string()) },
-                Some(
-                    ExecuteOptions::new()
-                        .router("r1")
-                        .metric("latency", MetricValue::Latency),
-                ),
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency),
             )
             .await;
 
