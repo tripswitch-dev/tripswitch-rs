@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -19,8 +20,7 @@ type FetchFn<T> = Box<
 pub struct Pager<T> {
     fetch: FetchFn<T>,
     current_page: i64,
-    total_pages: Option<i64>,
-    buffer: Vec<T>,
+    buffer: VecDeque<T>,
     done: bool,
 }
 
@@ -29,17 +29,16 @@ impl<T: Send + 'static> Pager<T> {
         Self {
             fetch,
             current_page: 1,
-            total_pages: None,
-            buffer: Vec::new(),
+            buffer: VecDeque::new(),
             done: false,
         }
     }
 
-    /// Returns the next item, fetching the next page when the buffer is empty.
+    /// Returns the next item, fetching the next page when the buffer is exhausted.
     /// Returns `Ok(None)` when all pages have been exhausted.
     pub async fn next(&mut self) -> Result<Option<T>, AdminError> {
         loop {
-            if let Some(item) = self.buffer.pop() {
+            if let Some(item) = self.buffer.pop_front() {
                 return Ok(Some(item));
             }
 
@@ -48,12 +47,7 @@ impl<T: Send + 'static> Pager<T> {
             }
 
             let page = (self.fetch)(self.current_page).await?;
-            self.total_pages = Some(page.total_pages);
-
-            // Reverse so we can pop from the end in order
-            let mut items = page.data;
-            items.reverse();
-            self.buffer = items;
+            self.buffer = page.data.into();
 
             if self.current_page >= page.total_pages || self.buffer.is_empty() {
                 self.done = true;

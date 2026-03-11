@@ -343,8 +343,10 @@ impl Client {
         E: std::error::Error + Send + 'static,
         Fut: Future<Output = Result<T, E>>,
     {
-        self.execute_inner::<T, E, Fut, fn(Result<&T, &E>) -> HashMap<String, f64>>(
-            task, opts, None,
+        self.execute_inner(
+            task,
+            opts,
+            None::<fn(Result<&T, &E>) -> HashMap<String, f64>>,
         )
         .await
     }

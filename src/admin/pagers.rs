@@ -2,6 +2,27 @@ use super::pager::Pager;
 use super::types::*;
 use super::AdminClient;
 
+macro_rules! project_pager {
+    ($method:ident, $list:ident, $T:ty) => {
+        pub fn $method(&self, project_id: impl Into<String>, per_page: Option<i64>) -> Pager<$T> {
+            let client = self.clone();
+            let pid = project_id.into();
+            let pp = per_page.unwrap_or(100);
+            Pager::new(Box::new(move |page| {
+                let client = client.clone();
+                let pid = pid.clone();
+                Box::pin(async move {
+                    let params = ListParams {
+                        page: Some(page),
+                        per_page: Some(pp),
+                    };
+                    client.$list(&pid, Some(&params)).await
+                })
+            }))
+        }
+    };
+}
+
 impl AdminClient {
     /// Create a pager that iterates over all projects.
     pub fn list_projects_pager(&self, per_page: Option<i64>) -> Pager<Project> {
@@ -19,71 +40,13 @@ impl AdminClient {
         }))
     }
 
-    /// Create a pager that iterates over all breakers in a project.
-    pub fn list_breakers_pager(
-        &self,
-        project_id: impl Into<String>,
-        per_page: Option<i64>,
-    ) -> Pager<Breaker> {
-        let client = self.clone();
-        let pid = project_id.into();
-        let pp = per_page.unwrap_or(100);
-        Pager::new(Box::new(move |page| {
-            let client = client.clone();
-            let pid = pid.clone();
-            Box::pin(async move {
-                let params = ListParams {
-                    page: Some(page),
-                    per_page: Some(pp),
-                };
-                client.list_breakers(&pid, Some(&params)).await
-            })
-        }))
-    }
-
-    /// Create a pager that iterates over all routers in a project.
-    pub fn list_routers_pager(
-        &self,
-        project_id: impl Into<String>,
-        per_page: Option<i64>,
-    ) -> Pager<Router> {
-        let client = self.clone();
-        let pid = project_id.into();
-        let pp = per_page.unwrap_or(100);
-        Pager::new(Box::new(move |page| {
-            let client = client.clone();
-            let pid = pid.clone();
-            Box::pin(async move {
-                let params = ListParams {
-                    page: Some(page),
-                    per_page: Some(pp),
-                };
-                client.list_routers(&pid, Some(&params)).await
-            })
-        }))
-    }
-
-    /// Create a pager that iterates over all notification channels in a project.
-    pub fn list_notification_channels_pager(
-        &self,
-        project_id: impl Into<String>,
-        per_page: Option<i64>,
-    ) -> Pager<NotificationChannel> {
-        let client = self.clone();
-        let pid = project_id.into();
-        let pp = per_page.unwrap_or(100);
-        Pager::new(Box::new(move |page| {
-            let client = client.clone();
-            let pid = pid.clone();
-            Box::pin(async move {
-                let params = ListParams {
-                    page: Some(page),
-                    per_page: Some(pp),
-                };
-                client.list_notification_channels(&pid, Some(&params)).await
-            })
-        }))
-    }
+    project_pager!(list_breakers_pager, list_breakers, Breaker);
+    project_pager!(list_routers_pager, list_routers, Router);
+    project_pager!(
+        list_notification_channels_pager,
+        list_notification_channels,
+        NotificationChannel
+    );
 
     /// Create a pager that iterates over all events in a project.
     pub fn list_events_pager(
