@@ -103,6 +103,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## How It Works
+
+1. **State Sync**: The client maintains a local cache of breaker states, updated in real-time via SSE
+2. **Execute Check**: Each `execute()` call checks the local cache (no network call)
+3. **Sample Reporting**: Results are buffered and batched (500 samples or 15s, whichever comes first), gzip-compressed, and HMAC-signed
+4. **Graceful Degradation**: If Tripswitch is unreachable, the client fails open by default
+
+## Circuit Breaker States
+
+| State | Behavior |
+|-------|----------|
+| `Closed` | All requests allowed, results reported |
+| `Open` | All requests rejected with `BreakerOpen` |
+| `HalfOpen` | Requests throttled based on `allow_rate` (e.g., 20% allowed) |
+
 ## Configuration Options
 
 ### Client Options
@@ -301,21 +316,6 @@ match result {
     }
 }
 ```
-
-## Circuit Breaker States
-
-| State | Behavior |
-|-------|----------|
-| `Closed` | All requests allowed, results reported |
-| `Open` | All requests rejected with `BreakerOpen` |
-| `HalfOpen` | Requests throttled based on `allow_rate` (e.g., 20% allowed) |
-
-## How It Works
-
-1. **State Sync**: The client maintains a local cache of breaker states, updated in real-time via SSE
-2. **Execute Check**: Each `execute()` call checks the local cache (no network call)
-3. **Sample Reporting**: Results are buffered and batched (500 samples or 15s, whichever comes first), gzip-compressed, and HMAC-signed
-4. **Graceful Degradation**: If Tripswitch is unreachable, the client fails open by default
 
 ## Dynamic Selection
 
