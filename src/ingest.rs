@@ -131,16 +131,16 @@ async fn flusher_loop(cfg: FlusherConfig) {
                         buffer.push(entry);
                         if buffer.len() >= BATCH_SIZE {
                             let batch = std::mem::take(&mut buffer);
-                            track_flush(&flush_failures, &last_flush_ms,
-                                send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
+                            let ok = send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                            track_flush(&flush_failures, &last_flush_ms, ok);
                         }
                     }
                     None => {
                         // Channel closed
                         if !buffer.is_empty() {
                             let batch = std::mem::take(&mut buffer);
-                            track_flush(&flush_failures, &last_flush_ms,
-                                send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
+                            let ok = send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                            track_flush(&flush_failures, &last_flush_ms, ok);
                         }
                         break;
                     }

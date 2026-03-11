@@ -2,6 +2,8 @@ pub mod errors;
 pub mod pager;
 pub mod types;
 
+pub use pager::Pager;
+
 mod breakers;
 mod events;
 mod notifications;

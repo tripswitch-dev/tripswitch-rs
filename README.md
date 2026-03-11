@@ -519,7 +519,7 @@ let project = client.get_project_with_opts("proj_abc123", Some(&opts)).await?;
 Every list method returns a `Page<T>` with page metadata. For iterating across all pages, use the `_pager` methods:
 
 ```rust
-use tripswitch::admin::pager::Pager;
+use tripswitch::admin::Pager;
 
 // Iterate item-by-item across all pages
 let mut pager = client.list_breakers_pager("proj_abc123", None);
