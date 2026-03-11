@@ -220,6 +220,30 @@ ExecuteOptions::new()
     })))
 ```
 
+### Deferred Metrics
+
+Use `execute_with_deferred` to compute metrics from the task's result:
+
+```rust
+let response = client
+    .execute_with_deferred(
+        || async { fetch_items().await },
+        ExecuteOptions::new()
+            .router("my-router")
+            .metric("latency", MetricValue::Latency),
+        |result| {
+            let mut m = HashMap::new();
+            if let Ok(items) = result {
+                m.insert("item_count".to_string(), items.len() as f64);
+            }
+            m
+        },
+    )
+    .await?;
+```
+
+The closure receives `Result<&T, &E>` and returns a `HashMap<String, f64>` of additional metrics to report alongside the standard ones. Panics in the closure are caught and logged.
+
 ### close
 
 ```rust
@@ -238,10 +262,14 @@ Returns a snapshot of SDK health metrics:
 
 ```rust
 pub struct SdkStats {
-    pub dropped_samples: u64,   // Samples dropped due to buffer overflow
-    pub buffer_capacity: usize,  // Channel buffer capacity
-    pub sse_connected: bool,    // SSE connection status
-    pub sse_reconnects: u64,    // Count of SSE reconnections
+    pub dropped_samples: u64,                              // Samples dropped due to buffer overflow
+    pub buffer_capacity: usize,                            // Channel buffer capacity
+    pub sse_connected: bool,                               // SSE connection status
+    pub sse_reconnects: u64,                               // Count of SSE reconnections
+    pub flush_failures: u64,                               // Batches dropped after retry exhaustion
+    pub last_successful_flush: Option<DateTime<Utc>>,      // Timestamp of last successful batch send
+    pub last_sse_event: Option<DateTime<Utc>>,             // Timestamp of last SSE event received
+    pub cached_breakers: usize,                            // Number of breakers in local state cache
 }
 ```
 
@@ -485,6 +513,26 @@ let opts = RequestOptions {
 
 let project = client.get_project_with_opts("proj_abc123", Some(&opts)).await?;
 ```
+
+### Pagination
+
+Every list method returns a `Page<T>` with page metadata. For iterating across all pages, use the `_pager` methods:
+
+```rust
+use tripswitch::admin::pager::Pager;
+
+// Iterate item-by-item across all pages
+let mut pager = client.list_breakers_pager("proj_abc123", None);
+while let Some(breaker) = pager.next().await? {
+    println!("{}: {:?}", breaker.name, breaker.metric);
+}
+
+// Or collect everything at once
+let mut pager = client.list_routers_pager("proj_abc123", Some(50));
+let all_routers = pager.collect_all().await?;
+```
+
+Available pagers: `list_projects_pager`, `list_breakers_pager`, `list_routers_pager`, `list_notification_channels_pager`, `list_events_pager`.
 
 ### Admin Error Handling
 

@@ -1,9 +1,11 @@
 pub mod errors;
+pub mod pager;
 pub mod types;
 
 mod breakers;
 mod events;
 mod notifications;
+mod pagers;
 mod project_keys;
 mod projects;
 mod routers;
@@ -897,5 +899,63 @@ mod tests {
 
         mock.assert();
         assert!(breaker.metadata.is_none());
+    }
+
+    // ── Pager Tests ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn pager_iterates_across_pages() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1/projects")
+                .query_param("page", "1")
+                .query_param("per_page", "2");
+            then.status(200).json_body(json!({
+                "data": [
+                    {"id":"p1","name":"P1","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"},
+                    {"id":"p2","name":"P2","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}
+                ],
+                "page": 1, "per_page": 2, "total": 3, "total_pages": 2
+            }));
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1/projects")
+                .query_param("page", "2")
+                .query_param("per_page", "2");
+            then.status(200).json_body(json!({
+                "data": [
+                    {"id":"p3","name":"P3","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}
+                ],
+                "page": 2, "per_page": 2, "total": 3, "total_pages": 2
+            }));
+        });
+
+        let client = test_client(&server);
+        let mut pager = client.list_projects_pager(Some(2));
+        let all = pager.collect_all().await.unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].id, "p1");
+        assert_eq!(all[2].id, "p3");
+    }
+
+    #[tokio::test]
+    async fn pager_empty_result() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1/projects/proj_123/breakers")
+                .query_param("page", "1");
+            then.status(200).json_body(json!({
+                "data": [],
+                "page": 1, "per_page": 100, "total": 0, "total_pages": 0
+            }));
+        });
+
+        let client = test_client(&server);
+        let mut pager = client.list_breakers_pager("proj_123", None);
+        let result = pager.next().await.unwrap();
+        assert!(result.is_none());
     }
 }

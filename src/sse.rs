@@ -14,6 +14,7 @@ use crate::types::{BreakerStateEntry, BreakerStateValue};
 pub(crate) struct SseStats {
     pub connected: Arc<AtomicBool>,
     pub reconnects: Arc<AtomicU64>,
+    pub last_event_ms: Arc<AtomicU64>,
 }
 
 pub(crate) struct SseHandle {
@@ -37,10 +38,12 @@ pub(crate) fn start_sse_listener(
         Arc::new(RwLock::new(HashMap::new()));
     let connected = Arc::new(AtomicBool::new(false));
     let reconnects = Arc::new(AtomicU64::new(0));
+    let last_event_ms = Arc::new(AtomicU64::new(0));
 
     let stats = SseStats {
         connected: connected.clone(),
         reconnects: reconnects.clone(),
+        last_event_ms: last_event_ms.clone(),
     };
 
     let states_clone = states.clone();
@@ -53,6 +56,7 @@ pub(crate) fn start_sse_listener(
         states: states_clone,
         connected,
         reconnects,
+        last_event_ms,
         on_state_change,
     }));
 
@@ -72,6 +76,7 @@ struct SseLoopParams {
     states: Arc<RwLock<HashMap<String, BreakerStateEntry>>>,
     connected: Arc<AtomicBool>,
     reconnects: Arc<AtomicU64>,
+    last_event_ms: Arc<AtomicU64>,
     on_state_change: Option<StateChangeCallback>,
 }
 
@@ -85,6 +90,7 @@ async fn sse_loop(p: SseLoopParams) {
         states,
         connected,
         reconnects,
+        last_event_ms,
         on_state_change,
     } = p;
     let url = format!("{base_url}/v1/projects/{project_id}/breakers/state:stream");
@@ -139,6 +145,9 @@ async fn sse_loop(p: SseLoopParams) {
                                 Ok(entry) => {
                                     let name = entry.breaker.clone();
                                     let new_state = entry.state;
+
+                                    let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+                                    last_event_ms.store(now_ms, Ordering::Relaxed);
 
                                     let old_state = {
                                         let mut map = states.write().await;

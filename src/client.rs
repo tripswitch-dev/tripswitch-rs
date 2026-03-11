@@ -17,6 +17,14 @@ use crate::types::*;
 
 const DEFAULT_BASE_URL: &str = "https://api.tripswitch.dev";
 
+fn ms_to_datetime(ms: u64) -> Option<chrono::DateTime<chrono::Utc>> {
+    if ms == 0 {
+        None
+    } else {
+        chrono::DateTime::from_timestamp_millis(ms as i64)
+    }
+}
+
 // ── ExecuteOptions ─────────────────────────────────────────────────
 
 type BreakerSelector = Box<dyn FnOnce(&[BreakerMeta]) -> Vec<String> + Send>;
@@ -306,6 +314,25 @@ impl Client {
         ClientBuilder::new(project_id)
     }
 
+    /// Execute a task, gated by breaker state, with deferred metrics computed from the result.
+    ///
+    /// The `deferred_metrics` closure receives the task result (or error) and returns
+    /// additional metrics to report. This is useful for extracting metrics from the
+    /// response (e.g., response size, item count) that aren't known until after execution.
+    pub async fn execute_with_deferred<T, E, Fut, F>(
+        &self,
+        task: impl FnOnce() -> Fut,
+        opts: ExecuteOptions,
+        deferred_metrics: F,
+    ) -> Result<T, ExecuteError<E>>
+    where
+        E: std::error::Error + Send + 'static,
+        Fut: Future<Output = Result<T, E>>,
+        F: FnOnce(Result<&T, &E>) -> HashMap<String, f64>,
+    {
+        self.execute_inner(task, opts, Some(deferred_metrics)).await
+    }
+
     /// Execute a task, gated by breaker state.
     pub async fn execute<T, E, Fut>(
         &self,
@@ -315,6 +342,23 @@ impl Client {
     where
         E: std::error::Error + Send + 'static,
         Fut: Future<Output = Result<T, E>>,
+    {
+        self.execute_inner::<T, E, Fut, fn(Result<&T, &E>) -> HashMap<String, f64>>(
+            task, opts, None,
+        )
+        .await
+    }
+
+    async fn execute_inner<T, E, Fut, F>(
+        &self,
+        task: impl FnOnce() -> Fut,
+        opts: ExecuteOptions,
+        deferred_metrics: Option<F>,
+    ) -> Result<T, ExecuteError<E>>
+    where
+        E: std::error::Error + Send + 'static,
+        Fut: Future<Output = Result<T, E>>,
+        F: FnOnce(Result<&T, &E>) -> HashMap<String, f64>,
     {
         // 1. Validate no conflicting options
         if opts.breakers.is_some() && opts.select_breakers.is_some() {
@@ -410,14 +454,18 @@ impl Client {
 
         // 7. Resolve metrics and emit samples
         if let Some(ref rid) = router_id {
+            let mut merged_tags = self.inner.global_tags.clone().unwrap_or_default();
+            if let Some(call_tags) = opts.tags {
+                merged_tags.extend(call_tags);
+            }
+            let ts_ms = chrono::Utc::now().timestamp_millis();
+            let tags_for_sample = if merged_tags.is_empty() {
+                None
+            } else {
+                Some(&merged_tags)
+            };
+
             if let Some(metrics) = opts.metrics {
-                let mut merged_tags = self.inner.global_tags.clone().unwrap_or_default();
-                if let Some(call_tags) = opts.tags {
-                    merged_tags.extend(call_tags);
-                }
-
-                let ts_ms = chrono::Utc::now().timestamp_millis();
-
                 for (metric_name, metric_val) in metrics {
                     if metric_name.is_empty() {
                         continue;
@@ -436,32 +484,59 @@ impl Client {
                         }
                     };
 
-                    let entry = ReportEntry {
+                    self.emit_sample(ReportEntry {
                         router_id: rid.clone(),
                         metric: metric_name,
                         ts_ms,
                         value,
                         ok,
-                        tags: if merged_tags.is_empty() {
-                            None
-                        } else {
-                            Some(merged_tags.clone())
-                        },
+                        tags: tags_for_sample.cloned(),
                         trace_id: opts.trace_id.clone(),
-                    };
+                    });
+                }
+            }
 
-                    if self.inner.ingest.tx.try_send(entry).is_err() {
-                        self.inner
-                            .ingest
-                            .stats
-                            .dropped_samples
-                            .fetch_add(1, Ordering::Relaxed);
+            // 8. Deferred metrics — compute from task result
+            if let Some(deferred) = deferred_metrics {
+                let deferred_result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        deferred(result.as_ref())
+                    }));
+                match deferred_result {
+                    Ok(extra_metrics) => {
+                        for (metric_name, value) in extra_metrics {
+                            if metric_name.is_empty() {
+                                continue;
+                            }
+                            self.emit_sample(ReportEntry {
+                                router_id: rid.clone(),
+                                metric: metric_name,
+                                ts_ms,
+                                value,
+                                ok,
+                                tags: tags_for_sample.cloned(),
+                                trace_id: opts.trace_id.clone(),
+                            });
+                        }
+                    }
+                    Err(_) => {
+                        warn!("deferred_metrics closure panicked");
                     }
                 }
             }
         }
 
         result.map_err(ExecuteError::Task)
+    }
+
+    fn emit_sample(&self, entry: ReportEntry) {
+        if self.inner.ingest.tx.try_send(entry).is_err() {
+            self.inner
+                .ingest
+                .stats
+                .dropped_samples
+                .fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     /// Report a sample directly without executing a task.
@@ -576,6 +651,22 @@ impl Client {
 
     /// Get SDK statistics.
     pub fn stats(&self) -> SdkStats {
+        let last_flush_ms = self
+            .inner
+            .ingest
+            .stats
+            .last_successful_flush_ms
+            .load(Ordering::Relaxed);
+        let last_event_ms = self.inner.sse.stats.last_event_ms.load(Ordering::Relaxed);
+
+        let cached_breakers = self
+            .inner
+            .sse
+            .states
+            .try_read()
+            .map(|s| s.len())
+            .unwrap_or(0);
+
         SdkStats {
             dropped_samples: self
                 .inner
@@ -586,6 +677,15 @@ impl Client {
             buffer_capacity: self.inner.ingest.buffer_capacity(),
             sse_connected: self.inner.sse.stats.connected.load(Ordering::Relaxed),
             sse_reconnects: self.inner.sse.stats.reconnects.load(Ordering::Relaxed),
+            flush_failures: self
+                .inner
+                .ingest
+                .stats
+                .flush_failures
+                .load(Ordering::Relaxed),
+            last_successful_flush: ms_to_datetime(last_flush_ms),
+            last_sse_event: ms_to_datetime(last_event_ms),
+            cached_breakers,
         }
     }
 
@@ -637,6 +737,7 @@ mod tests {
             stats: SseStats {
                 connected: Arc::new(AtomicBool::new(true)),
                 reconnects: Arc::new(AtomicU64::new(0)),
+                last_event_ms: Arc::new(AtomicU64::new(0)),
             },
             task_handle: tokio::spawn(async {}),
         };
@@ -645,6 +746,8 @@ mod tests {
             tx,
             stats: IngestStats {
                 dropped_samples: Arc::new(AtomicU64::new(0)),
+                flush_failures: Arc::new(AtomicU64::new(0)),
+                last_successful_flush_ms: Arc::new(AtomicU64::new(0)),
             },
             task_handle: tokio::spawn(async {}),
         };
@@ -1266,6 +1369,86 @@ mod tests {
     // ── stats ──────────────────────────────────────────────────────
 
     #[tokio::test]
+    async fn execute_with_deferred_emits_extra_metrics() {
+        let (client, mut rx) = new_test_client();
+
+        let result = client
+            .execute_with_deferred(
+                || async { Ok::<_, std::io::Error>(vec![1, 2, 3]) },
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency),
+                |result| {
+                    let mut m = HashMap::new();
+                    if let Ok(items) = result {
+                        m.insert("item_count".to_string(), items.len() as f64);
+                    }
+                    m
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 3);
+
+        // Should have 2 samples: latency + item_count
+        let s1 = rx.try_recv().unwrap();
+        let s2 = rx.try_recv().unwrap();
+        let metrics: Vec<&str> = vec![&s1.metric, &s2.metric];
+        assert!(metrics.contains(&"latency"));
+        assert!(metrics.contains(&"item_count"));
+
+        let item_count_sample = if s1.metric == "item_count" { &s1 } else { &s2 };
+        assert_eq!(item_count_sample.value, 3.0);
+        assert!(item_count_sample.ok);
+    }
+
+    #[tokio::test]
+    async fn execute_with_deferred_panic_does_not_crash() {
+        let (client, _rx) = new_test_client();
+
+        let result = client
+            .execute_with_deferred(
+                || async { Ok::<_, std::io::Error>("hello".to_string()) },
+                ExecuteOptions::new().router("r1"),
+                |_result| -> HashMap<String, f64> {
+                    panic!("intentional panic in deferred metrics");
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[tokio::test]
+    async fn execute_with_deferred_on_error() {
+        let (client, mut rx) = new_test_client();
+
+        let result: Result<String, ExecuteError<std::io::Error>> = client
+            .execute_with_deferred(
+                || async { Err::<String, _>(std::io::Error::other("boom")) },
+                ExecuteOptions::new()
+                    .router("r1")
+                    .metric("latency", MetricValue::Latency),
+                |result| {
+                    let mut m = HashMap::new();
+                    if result.is_err() {
+                        m.insert("error_count".to_string(), 1.0);
+                    }
+                    m
+                },
+            )
+            .await;
+        assert!(result.is_err());
+
+        // Should have 2 samples: latency + error_count
+        let s1 = rx.try_recv().unwrap();
+        let s2 = rx.try_recv().unwrap();
+        let metrics: Vec<&str> = vec![&s1.metric, &s2.metric];
+        assert!(metrics.contains(&"latency"));
+        assert!(metrics.contains(&"error_count"));
+    }
+
+    #[tokio::test]
     async fn stats_reflects_counters() {
         let (client, _rx) = new_test_client();
         client
@@ -1276,13 +1459,35 @@ mod tests {
             .store(5, Ordering::Relaxed);
         client
             .inner
+            .ingest
+            .stats
+            .flush_failures
+            .store(2, Ordering::Relaxed);
+        client
+            .inner
+            .ingest
+            .stats
+            .last_successful_flush_ms
+            .store(1700000000000, Ordering::Relaxed);
+        client
+            .inner
             .sse
             .stats
             .connected
             .store(true, Ordering::Relaxed);
+        client
+            .inner
+            .sse
+            .stats
+            .last_event_ms
+            .store(1700000001000, Ordering::Relaxed);
 
         let stats = client.stats();
         assert_eq!(stats.dropped_samples, 5);
+        assert_eq!(stats.flush_failures, 2);
+        assert!(stats.last_successful_flush.is_some());
+        assert!(stats.last_sse_event.is_some());
         assert!(stats.sse_connected);
+        assert_eq!(stats.cached_breakers, 0);
     }
 }

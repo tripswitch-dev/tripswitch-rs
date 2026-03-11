@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,6 +25,8 @@ const BACKOFF_SCHEDULE: &[Duration] = &[
 
 pub(crate) struct IngestStats {
     pub dropped_samples: Arc<AtomicU64>,
+    pub flush_failures: Arc<AtomicU64>,
+    pub last_successful_flush_ms: Arc<AtomicU64>,
 }
 
 pub(crate) struct IngestHandle {
@@ -48,8 +50,12 @@ pub(crate) fn start_flusher(
 ) -> IngestHandle {
     let (tx, rx) = mpsc::channel::<ReportEntry>(CHANNEL_CAPACITY);
     let dropped = Arc::new(AtomicU64::new(0));
+    let flush_failures = Arc::new(AtomicU64::new(0));
+    let last_flush_ms = Arc::new(AtomicU64::new(0));
     let stats = IngestStats {
         dropped_samples: dropped.clone(),
+        flush_failures: flush_failures.clone(),
+        last_successful_flush_ms: last_flush_ms.clone(),
     };
 
     let http = reqwest::Client::builder()
@@ -57,7 +63,7 @@ pub(crate) fn start_flusher(
         .build()
         .expect("failed to build ingest HTTP client");
 
-    let task_handle = tokio::spawn(flusher_loop(
+    let task_handle = tokio::spawn(flusher_loop(FlusherConfig {
         rx,
         http,
         base_url,
@@ -65,7 +71,9 @@ pub(crate) fn start_flusher(
         ingest_secret,
         api_key,
         cancel,
-    ));
+        flush_failures,
+        last_flush_ms,
+    }));
 
     IngestHandle {
         tx,
@@ -74,15 +82,30 @@ pub(crate) fn start_flusher(
     }
 }
 
-async fn flusher_loop(
-    mut rx: mpsc::Receiver<ReportEntry>,
+struct FlusherConfig {
+    rx: mpsc::Receiver<ReportEntry>,
     http: reqwest::Client,
     base_url: String,
     project_id: String,
     ingest_secret: Option<String>,
     api_key: String,
     cancel: CancellationToken,
-) {
+    flush_failures: Arc<AtomicU64>,
+    last_flush_ms: Arc<AtomicU64>,
+}
+
+async fn flusher_loop(cfg: FlusherConfig) {
+    let FlusherConfig {
+        mut rx,
+        http,
+        base_url,
+        project_id,
+        ingest_secret,
+        api_key,
+        cancel,
+        flush_failures,
+        last_flush_ms,
+    } = cfg;
     let url = format!("{base_url}/v1/projects/{project_id}/ingest");
     let mut buffer: Vec<ReportEntry> = Vec::with_capacity(BATCH_SIZE);
     let mut interval = tokio::time::interval(FLUSH_INTERVAL);
@@ -97,7 +120,8 @@ async fn flusher_loop(
                 }
                 if !buffer.is_empty() {
                     let batch = std::mem::take(&mut buffer);
-                    send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                    track_flush(&flush_failures, &last_flush_ms,
+                        send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
                 }
                 break;
             }
@@ -107,14 +131,16 @@ async fn flusher_loop(
                         buffer.push(entry);
                         if buffer.len() >= BATCH_SIZE {
                             let batch = std::mem::take(&mut buffer);
-                            send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                            track_flush(&flush_failures, &last_flush_ms,
+                                send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
                         }
                     }
                     None => {
                         // Channel closed
                         if !buffer.is_empty() {
                             let batch = std::mem::take(&mut buffer);
-                            send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                            track_flush(&flush_failures, &last_flush_ms,
+                                send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
                         }
                         break;
                     }
@@ -123,10 +149,20 @@ async fn flusher_loop(
             _ = interval.tick() => {
                 if !buffer.is_empty() {
                     let batch = std::mem::take(&mut buffer);
-                    send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await;
+                    track_flush(&flush_failures, &last_flush_ms,
+                        send_batch(&http, &url, ingest_secret.as_deref(), &api_key, batch).await);
                 }
             }
         }
+    }
+}
+
+fn track_flush(flush_failures: &AtomicU64, last_flush_ms: &AtomicU64, success: bool) {
+    if success {
+        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+        last_flush_ms.store(now_ms, Ordering::Relaxed);
+    } else {
+        flush_failures.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -136,13 +172,13 @@ async fn send_batch(
     ingest_secret: Option<&str>,
     api_key: &str,
     samples: Vec<ReportEntry>,
-) {
+) -> bool {
     let payload = BatchPayload { samples };
     let json_bytes = match serde_json::to_vec(&payload) {
         Ok(b) => b,
         Err(e) => {
             warn!("failed to serialize ingest payload: {e}");
-            return;
+            return false;
         }
     };
 
@@ -150,13 +186,13 @@ async fn send_batch(
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     if let Err(e) = encoder.write_all(&json_bytes) {
         warn!("failed to gzip ingest payload: {e}");
-        return;
+        return false;
     }
     let compressed = match encoder.finish() {
         Ok(b) => b,
         Err(e) => {
             warn!("failed to finish gzip: {e}");
-            return;
+            return false;
         }
     };
 
@@ -198,11 +234,11 @@ async fn send_batch(
                         "ingest batch sent successfully ({} samples)",
                         payload.samples.len()
                     );
-                    return;
+                    return true;
                 }
                 if status == 401 || status == 403 {
                     warn!("ingest auth error (HTTP {status}), not retrying");
-                    return;
+                    return false;
                 }
                 warn!("ingest request failed (HTTP {status})");
             }
@@ -211,6 +247,7 @@ async fn send_batch(
             }
         }
     }
+    false
 }
 
 pub(crate) fn compute_signature(secret_hex: &str, ts_ms: i64, compressed: &[u8]) -> Option<String> {
