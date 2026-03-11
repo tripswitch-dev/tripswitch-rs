@@ -7,6 +7,14 @@ impl AdminClient {
         &self,
         project_id: &str,
         params: Option<&ListEventsParams>,
+    ) -> Result<ListEventsResponse, AdminError> {
+        self.list_events_with_opts(project_id, params, None).await
+    }
+
+    pub async fn list_events_with_opts(
+        &self,
+        project_id: &str,
+        params: Option<&ListEventsParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListEventsResponse, AdminError> {
         let url = self.url(&format!("/v1/projects/{project_id}/events"));

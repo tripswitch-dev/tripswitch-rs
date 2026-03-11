@@ -7,6 +7,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         params: Option<&ListParams>,
+    ) -> Result<ListNotificationChannelsResponse, AdminError> {
+        self.list_notification_channels_with_opts(project_id, params, None)
+            .await
+    }
+
+    pub async fn list_notification_channels_with_opts(
+        &self,
+        project_id: &str,
+        params: Option<&ListParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListNotificationChannelsResponse, AdminError> {
         let url = self.url(&format!("/v1/projects/{project_id}/notification-channels"));
@@ -21,6 +30,15 @@ impl AdminClient {
     }
 
     pub async fn get_notification_channel(
+        &self,
+        project_id: &str,
+        channel_id: &str,
+    ) -> Result<NotificationChannel, AdminError> {
+        self.get_notification_channel_with_opts(project_id, channel_id, None)
+            .await
+    }
+
+    pub async fn get_notification_channel_with_opts(
         &self,
         project_id: &str,
         channel_id: &str,
@@ -39,6 +57,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         input: &CreateNotificationChannelInput,
+    ) -> Result<NotificationChannel, AdminError> {
+        self.create_notification_channel_with_opts(project_id, input, None)
+            .await
+    }
+
+    pub async fn create_notification_channel_with_opts(
+        &self,
+        project_id: &str,
+        input: &CreateNotificationChannelInput,
         opts: Option<&RequestOptions>,
     ) -> Result<NotificationChannel, AdminError> {
         let builder = self
@@ -50,6 +77,16 @@ impl AdminClient {
     }
 
     pub async fn update_notification_channel(
+        &self,
+        project_id: &str,
+        channel_id: &str,
+        input: &UpdateNotificationChannelInput,
+    ) -> Result<NotificationChannel, AdminError> {
+        self.update_notification_channel_with_opts(project_id, channel_id, input, None)
+            .await
+    }
+
+    pub async fn update_notification_channel_with_opts(
         &self,
         project_id: &str,
         channel_id: &str,
@@ -70,6 +107,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         channel_id: &str,
+    ) -> Result<(), AdminError> {
+        self.delete_notification_channel_with_opts(project_id, channel_id, None)
+            .await
+    }
+
+    pub async fn delete_notification_channel_with_opts(
+        &self,
+        project_id: &str,
+        channel_id: &str,
         opts: Option<&RequestOptions>,
     ) -> Result<(), AdminError> {
         let builder = self
@@ -82,6 +128,15 @@ impl AdminClient {
     }
 
     pub async fn test_notification_channel(
+        &self,
+        project_id: &str,
+        channel_id: &str,
+    ) -> Result<(), AdminError> {
+        self.test_notification_channel_with_opts(project_id, channel_id, None)
+            .await
+    }
+
+    pub async fn test_notification_channel_with_opts(
         &self,
         project_id: &str,
         channel_id: &str,

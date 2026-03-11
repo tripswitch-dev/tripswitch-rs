@@ -427,28 +427,25 @@ let client = AdminClient::builder("eb_admin_...")
     .build();
 
 // List all projects
-let projects = client.list_projects(None, None).await?;
+let projects = client.list_projects(None).await?;
 
 // Create a project
 let project = client
-    .create_project(
-        &CreateProjectInput {
-            name: "prod-payments".to_string(),
-            description: None,
-        },
-        None,
-    )
+    .create_project(&CreateProjectInput {
+        name: "prod-payments".to_string(),
+        description: None,
+    })
     .await?;
 
 // Get project details
-let project = client.get_project("proj_abc123", None).await?;
+let project = client.get_project("proj_abc123").await?;
 
 // Delete a project (requires name confirmation)
-client.delete_project("proj_abc123", "prod-payments", None).await?;
+client.delete_project("proj_abc123", "prod-payments").await?;
 
 // List breakers
 let params = ListParams { page: Some(1), per_page: Some(100) };
-let page = client.list_breakers("proj_abc123", Some(&params), None).await?;
+let page = client.list_breakers("proj_abc123", Some(&params)).await?;
 
 // Create a breaker
 let breaker = client
@@ -468,14 +465,13 @@ let breaker = client
             cooldown: None,
             metadata: None,
         },
-        None,
     )
     .await?;
 ```
 
 ### Request Options
 
-Per-request options for admin calls:
+Every method has a `_with_opts` variant that accepts per-request options:
 
 ```rust
 use tripswitch::admin::RequestOptions;
@@ -487,7 +483,7 @@ let opts = RequestOptions {
     headers: None,
 };
 
-let project = client.get_project("proj_abc123", Some(&opts)).await?;
+let project = client.get_project_with_opts("proj_abc123", Some(&opts)).await?;
 ```
 
 ### Admin Error Handling
@@ -495,7 +491,7 @@ let project = client.get_project("proj_abc123", Some(&opts)).await?;
 ```rust
 use tripswitch::admin::errors::AdminError;
 
-match client.get_project("proj_missing", None).await {
+match client.get_project("proj_missing").await {
     Ok(project) => { /* success */ }
     Err(e) if e.is_not_found() => println!("project not found"),
     Err(e) if e.is_rate_limited() => {

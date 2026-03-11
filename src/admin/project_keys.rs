@@ -6,6 +6,13 @@ impl AdminClient {
     pub async fn list_project_keys(
         &self,
         project_id: &str,
+    ) -> Result<ListProjectKeysResponse, AdminError> {
+        self.list_project_keys_with_opts(project_id, None).await
+    }
+
+    pub async fn list_project_keys_with_opts(
+        &self,
+        project_id: &str,
         opts: Option<&RequestOptions>,
     ) -> Result<ListProjectKeysResponse, AdminError> {
         let builder = self
@@ -16,6 +23,15 @@ impl AdminClient {
     }
 
     pub async fn create_project_key(
+        &self,
+        project_id: &str,
+        input: &CreateProjectKeyInput,
+    ) -> Result<CreateProjectKeyResponse, AdminError> {
+        self.create_project_key_with_opts(project_id, input, None)
+            .await
+    }
+
+    pub async fn create_project_key_with_opts(
         &self,
         project_id: &str,
         input: &CreateProjectKeyInput,
@@ -30,6 +46,15 @@ impl AdminClient {
     }
 
     pub async fn delete_project_key(
+        &self,
+        project_id: &str,
+        key_id: &str,
+    ) -> Result<(), AdminError> {
+        self.delete_project_key_with_opts(project_id, key_id, None)
+            .await
+    }
+
+    pub async fn delete_project_key_with_opts(
         &self,
         project_id: &str,
         key_id: &str,
