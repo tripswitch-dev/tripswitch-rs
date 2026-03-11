@@ -82,12 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let resp = reqwest::get("https://api.example.com/data").await?;
                 resp.text().await
             },
-            Some(
-                ExecuteOptions::new()
-                    .breakers(&["external-api"])
-                    .router("my-router-id")
-                    .metric("latency", MetricValue::Latency),
-            ),
+            ExecuteOptions::new()
+                .breakers(&["external-api"])
+                .router("my-router-id")
+                .metric("latency", MetricValue::Latency),
         )
         .await;
 
@@ -170,7 +168,7 @@ Creates a new Tripswitch client. Starts background tasks for SSE state sync, sam
 async fn execute<T, E, Fut>(
     &self,
     task: impl FnOnce() -> Fut,
-    opts: Option<ExecuteOptions>,
+    opts: ExecuteOptions,
 ) -> Result<T, ExecuteError<E>>
 where
     E: std::error::Error + Send + 'static,
@@ -289,7 +287,7 @@ pub enum ExecuteError<E> {
 `ExecuteError<E>` preserves your task's error type — use `is_breaker_error()`, `sdk_error()`, or `task_error()` to inspect:
 
 ```rust
-let result = client.execute(|| async { do_work().await }, opts).await;
+let result = client.execute(|| async { do_work().await }, ExecuteOptions::default()).await;
 match result {
     Ok(value) => { /* success */ }
     Err(e) if e.is_breaker_error() => {
@@ -341,7 +339,7 @@ fn breakers_in_region(breakers: &[BreakerMeta]) -> Vec<String> {
 let result = client
     .execute(
         || async { do_work().await },
-        Some(ExecuteOptions::new().select_breakers(breakers_in_region)),
+        ExecuteOptions::new().select_breakers(breakers_in_region),
     )
     .await;
 ```
@@ -364,11 +362,9 @@ fn production_router(routers: &[RouterMeta]) -> String {
 let result = client
     .execute(
         || async { do_work().await },
-        Some(
-            ExecuteOptions::new()
-                .select_router(production_router)
-                .metric("latency", MetricValue::Latency),
-        ),
+        ExecuteOptions::new()
+            .select_router(production_router)
+            .metric("latency", MetricValue::Latency),
     )
     .await;
 ```
