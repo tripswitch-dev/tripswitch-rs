@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
@@ -28,9 +28,7 @@ impl AdminClient {
     ) -> Result<Breaker, AdminError> {
         let builder = self
             .http
-            .get(self.url(&format!(
-                "/v1/projects/{project_id}/breakers/{breaker_id}"
-            )))
+            .get(self.url(&format!("/v1/projects/{project_id}/breakers/{breaker_id}")))
             .headers(self.auth_headers());
         self.do_request(builder, opts).await
     }
@@ -58,9 +56,7 @@ impl AdminClient {
     ) -> Result<Breaker, AdminError> {
         let builder = self
             .http
-            .patch(self.url(&format!(
-                "/v1/projects/{project_id}/breakers/{breaker_id}"
-            )))
+            .patch(self.url(&format!("/v1/projects/{project_id}/breakers/{breaker_id}")))
             .headers(self.auth_headers())
             .json(input);
         self.do_request(builder, opts).await
@@ -74,9 +70,7 @@ impl AdminClient {
     ) -> Result<(), AdminError> {
         let builder = self
             .http
-            .delete(self.url(&format!(
-                "/v1/projects/{project_id}/breakers/{breaker_id}"
-            )))
+            .delete(self.url(&format!("/v1/projects/{project_id}/breakers/{breaker_id}")))
             .headers(self.auth_headers());
         self.do_request_no_content(builder, opts).await
     }
@@ -118,9 +112,7 @@ impl AdminClient {
     ) -> Result<Vec<BreakerState>, AdminError> {
         let builder = self
             .http
-            .post(self.url(&format!(
-                "/v1/projects/{project_id}/breakers/state:batch"
-            )))
+            .post(self.url(&format!("/v1/projects/{project_id}/breakers/state:batch")))
             .headers(self.auth_headers())
             .json(input);
         self.do_request(builder, opts).await

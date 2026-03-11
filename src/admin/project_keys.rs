@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
@@ -37,9 +37,7 @@ impl AdminClient {
     ) -> Result<(), AdminError> {
         let builder = self
             .http
-            .delete(self.url(&format!(
-                "/v1/projects/{project_id}/keys/{key_id}"
-            )))
+            .delete(self.url(&format!("/v1/projects/{project_id}/keys/{key_id}")))
             .headers(self.auth_headers());
         self.do_request_no_content(builder, opts).await
     }

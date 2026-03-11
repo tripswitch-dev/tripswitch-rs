@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
@@ -9,9 +9,7 @@ impl AdminClient {
         params: Option<&ListParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListNotificationChannelsResponse, AdminError> {
-        let url = self.url(&format!(
-            "/v1/projects/{project_id}/notification-channels"
-        ));
+        let url = self.url(&format!("/v1/projects/{project_id}/notification-channels"));
         let mut builder = self.http.get(&url).headers(self.auth_headers());
         if let Some(p) = params {
             let pairs = p.to_query_pairs();
@@ -45,9 +43,7 @@ impl AdminClient {
     ) -> Result<NotificationChannel, AdminError> {
         let builder = self
             .http
-            .post(self.url(&format!(
-                "/v1/projects/{project_id}/notification-channels"
-            )))
+            .post(self.url(&format!("/v1/projects/{project_id}/notification-channels")))
             .headers(self.auth_headers())
             .json(input);
         self.do_request(builder, opts).await

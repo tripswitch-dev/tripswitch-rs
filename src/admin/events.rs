@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {

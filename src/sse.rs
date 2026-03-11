@@ -116,10 +116,7 @@ async fn sse_loop(p: SseLoopParams) {
             .header("Authorization", format!("Bearer {api_key}"))
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-cache")
-            .header(
-                "X-Contract-Version",
-                crate::CONTRACT_VERSION,
-            );
+            .header("X-Contract-Version", crate::CONTRACT_VERSION);
 
         let mut es = EventSource::new(req).unwrap();
 

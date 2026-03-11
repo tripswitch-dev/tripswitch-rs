@@ -477,7 +477,10 @@ mod tests {
         for (variant, expected) in [
             (NotificationEventType::BreakerOpened, "breaker_opened"),
             (NotificationEventType::BreakerClosed, "breaker_closed"),
-            (NotificationEventType::BreakerHalfOpened, "breaker_half_opened"),
+            (
+                NotificationEventType::BreakerHalfOpened,
+                "breaker_half_opened",
+            ),
             (NotificationEventType::BreakerCreated, "breaker_created"),
             (NotificationEventType::BreakerDeleted, "breaker_deleted"),
         ] {

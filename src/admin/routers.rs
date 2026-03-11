@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
@@ -28,9 +28,7 @@ impl AdminClient {
     ) -> Result<Router, AdminError> {
         let builder = self
             .http
-            .get(self.url(&format!(
-                "/v1/projects/{project_id}/routers/{router_id}"
-            )))
+            .get(self.url(&format!("/v1/projects/{project_id}/routers/{router_id}")))
             .headers(self.auth_headers());
         self.do_request(builder, opts).await
     }
@@ -58,9 +56,7 @@ impl AdminClient {
     ) -> Result<Router, AdminError> {
         let builder = self
             .http
-            .patch(self.url(&format!(
-                "/v1/projects/{project_id}/routers/{router_id}"
-            )))
+            .patch(self.url(&format!("/v1/projects/{project_id}/routers/{router_id}")))
             .headers(self.auth_headers())
             .json(input);
         self.do_request(builder, opts).await
@@ -74,9 +70,7 @@ impl AdminClient {
     ) -> Result<(), AdminError> {
         let builder = self
             .http
-            .delete(self.url(&format!(
-                "/v1/projects/{project_id}/routers/{router_id}"
-            )))
+            .delete(self.url(&format!("/v1/projects/{project_id}/routers/{router_id}")))
             .headers(self.auth_headers());
         self.do_request_no_content(builder, opts).await
     }

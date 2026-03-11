@@ -336,7 +336,9 @@ impl Client {
         let breaker_names: Option<Vec<String>> = if let Some(names) = opts.breakers {
             Some(names)
         } else if let Some(selector) = opts.select_breakers {
-            let meta = self.get_breakers_metadata().ok_or(Error::MetadataUnavailable)?;
+            let meta = self
+                .get_breakers_metadata()
+                .ok_or(Error::MetadataUnavailable)?;
             Some(selector(&meta))
         } else {
             None
@@ -346,7 +348,9 @@ impl Client {
         let router_id: Option<String> = if let Some(id) = opts.router {
             Some(id)
         } else if let Some(selector) = opts.select_router {
-            let meta = self.get_routers_metadata().ok_or(Error::MetadataUnavailable)?;
+            let meta = self
+                .get_routers_metadata()
+                .ok_or(Error::MetadataUnavailable)?;
             Some(selector(&meta))
         } else {
             None
@@ -798,8 +802,9 @@ mod tests {
     #[tokio::test]
     async fn execute_no_breakers_passthrough() {
         let (client, _rx) = new_test_client();
-        let result: Result<String, std::io::Error> =
-            client.execute(|| async { Ok("success".to_string()) }, None).await
+        let result: Result<String, std::io::Error> = client
+            .execute(|| async { Ok("success".to_string()) }, None)
+            .await
             .map_err(|e| match e {
                 ExecuteError::Task(e) => e,
                 ExecuteError::Sdk(e) => panic!("unexpected sdk error: {e}"),
@@ -810,7 +815,13 @@ mod tests {
     #[tokio::test]
     async fn execute_closed_breaker_allows() {
         let (client, _rx) = new_test_client();
-        set_breaker_state(&client, "test-breaker", BreakerStateValue::Closed, Some(1.0)).await;
+        set_breaker_state(
+            &client,
+            "test-breaker",
+            BreakerStateValue::Closed,
+            Some(1.0),
+        )
+        .await;
 
         let result = client
             .execute(
@@ -937,10 +948,7 @@ mod tests {
         }
         let rate = allowed as f64 / iterations as f64;
         // Should be ~0.2 (min), not ~0.1 (multiplicative)
-        assert!(
-            rate > 0.17 && rate < 0.23,
-            "expected rate ~0.2, got {rate}"
-        );
+        assert!(rate > 0.17 && rate < 0.23, "expected rate ~0.2, got {rate}");
     }
 
     // ── Conflicting options ────────────────────────────────────────
@@ -1183,9 +1191,7 @@ mod tests {
 
         let result = client
             .execute(
-                || async {
-                    Err::<String, _>(std::io::Error::other("task failed"))
-                },
+                || async { Err::<String, _>(std::io::Error::other("task failed")) },
                 Some(
                     ExecuteOptions::new()
                         .router("r1")

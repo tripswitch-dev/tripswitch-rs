@@ -56,16 +56,11 @@ async fn test_execute() {
     let result: Result<String, std::io::Error> = client
         .execute(
             || async { Ok("hello".to_string()) },
-            Some(
-                ExecuteOptions::new()
-                    .metric("latency", MetricValue::Latency),
-            ),
+            Some(ExecuteOptions::new().metric("latency", MetricValue::Latency)),
         )
         .await
         .map_err(|e| match e {
-            tripswitch::ExecuteError::Sdk(e) => {
-                std::io::Error::other(e.to_string())
-            }
+            tripswitch::ExecuteError::Sdk(e) => std::io::Error::other(e.to_string()),
             tripswitch::ExecuteError::Task(e) => e,
         });
 

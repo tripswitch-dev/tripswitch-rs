@@ -1,5 +1,5 @@
-use super::types::*;
 use super::errors::AdminError;
+use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
@@ -79,9 +79,7 @@ impl AdminClient {
     ) -> Result<IngestSecretRotation, AdminError> {
         let builder = self
             .http
-            .post(self.url(&format!(
-                "/v1/projects/{project_id}/ingest_secret/rotate"
-            )))
+            .post(self.url(&format!("/v1/projects/{project_id}/ingest_secret/rotate")))
             .headers(self.auth_headers());
         self.do_request(builder, opts).await
     }

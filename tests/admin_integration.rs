@@ -1,8 +1,7 @@
-use tripswitch::admin::{AdminClient, types::*};
+use tripswitch::admin::{types::*, AdminClient};
 
 fn admin_client() -> AdminClient {
-    let api_key = std::env::var("TRIPSWITCH_API_KEY")
-        .expect("TRIPSWITCH_API_KEY must be set");
+    let api_key = std::env::var("TRIPSWITCH_API_KEY").expect("TRIPSWITCH_API_KEY must be set");
     let mut builder = AdminClient::builder(api_key);
     if let Ok(url) = std::env::var("TRIPSWITCH_BASE_URL") {
         builder = builder.base_url(url);
@@ -108,10 +107,7 @@ async fn test_breaker_crud() {
         .update_breaker(&pid, &breaker.id, &update, None)
         .await
         .unwrap();
-    assert_eq!(
-        updated.description.as_deref(),
-        Some("updated description")
-    );
+    assert_eq!(updated.description.as_deref(), Some("updated description"));
 
     // Delete
     client

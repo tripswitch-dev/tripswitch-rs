@@ -1,12 +1,12 @@
-pub mod types;
 pub mod errors;
+pub mod types;
 
-mod projects;
 mod breakers;
-mod routers;
-mod notifications;
 mod events;
+mod notifications;
 mod project_keys;
+mod projects;
+mod routers;
 
 use errors::{AdminError, ApiError};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -145,16 +145,15 @@ impl AdminClient {
             .and_then(|v| v.parse::<u64>().ok());
 
         let body_text = resp.text().await.unwrap_or_default();
-        let mut api_err = serde_json::from_str::<ApiError>(&body_text).unwrap_or_else(|_| {
-            ApiError {
+        let mut api_err =
+            serde_json::from_str::<ApiError>(&body_text).unwrap_or_else(|_| ApiError {
                 status,
                 code: String::new(),
                 message: body_text.clone(),
                 request_id: None,
                 body: None,
                 retry_after: None,
-            }
-        });
+            });
         api_err.status = status;
         api_err.body = Some(body_text);
         api_err.retry_after = retry_after;
@@ -182,16 +181,15 @@ impl AdminClient {
             .and_then(|v| v.parse::<u64>().ok());
 
         let body_text = resp.text().await.unwrap_or_default();
-        let mut api_err = serde_json::from_str::<ApiError>(&body_text).unwrap_or_else(|_| {
-            ApiError {
+        let mut api_err =
+            serde_json::from_str::<ApiError>(&body_text).unwrap_or_else(|_| ApiError {
                 status,
                 code: String::new(),
                 message: body_text.clone(),
                 request_id: None,
                 body: None,
                 retry_after: None,
-            }
-        });
+            });
         api_err.status = status;
         api_err.body = Some(body_text);
         api_err.retry_after = retry_after;
@@ -202,8 +200,8 @@ impl AdminClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::types::*;
+    use super::*;
     use httpmock::prelude::*;
     use serde_json::json;
 
@@ -425,7 +423,10 @@ mod tests {
             cooldown: None,
             metadata: None,
         };
-        let breaker = client.create_breaker("proj_123", &input, None).await.unwrap();
+        let breaker = client
+            .create_breaker("proj_123", &input, None)
+            .await
+            .unwrap();
 
         mock.assert();
         assert_eq!(breaker.id, "breaker_456");
@@ -510,7 +511,10 @@ mod tests {
             mode: Some(RouterMode::RoundRobin),
             metadata: None,
         };
-        let router = client.create_router("proj_123", &input, None).await.unwrap();
+        let router = client
+            .create_router("proj_123", &input, None)
+            .await
+            .unwrap();
 
         mock.assert();
         assert_eq!(router.id, "router_789");
@@ -771,10 +775,7 @@ mod tests {
             timeout: None,
             headers: None,
         };
-        client
-            .get_project("proj_123", Some(&opts))
-            .await
-            .unwrap();
+        client.get_project("proj_123", Some(&opts)).await.unwrap();
 
         mock.assert();
     }
@@ -800,10 +801,7 @@ mod tests {
             headers: Some(extra_headers),
             ..Default::default()
         };
-        client
-            .get_project("proj_123", Some(&opts))
-            .await
-            .unwrap();
+        client.get_project("proj_123", Some(&opts)).await.unwrap();
 
         mock.assert();
     }
@@ -840,8 +838,7 @@ mod tests {
     async fn create_breaker_with_metadata_in_body() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/v1/projects/proj_123/breakers");
+            when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
                 "id": "b1", "project_id": "proj_123", "name": "test",
                 "kind": "standard", "metric": "latency", "threshold": 100.0,
@@ -880,8 +877,7 @@ mod tests {
     async fn create_breaker_nil_metadata_omitted() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/v1/projects/proj_123/breakers");
+            when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
                 "id": "b2", "project_id": "proj_123", "name": "no-meta",
                 "kind": "standard", "metric": "latency", "threshold": 100.0,

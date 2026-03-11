@@ -72,7 +72,14 @@ async fn metadata_loop(
     let mut routers_etag: Option<String> = None;
 
     // Initial fetch immediately
-    fetch_breakers(&http, &breakers_url, &api_key, &breakers, &mut breakers_etag).await;
+    fetch_breakers(
+        &http,
+        &breakers_url,
+        &api_key,
+        &breakers,
+        &mut breakers_etag,
+    )
+    .await;
     fetch_routers(&http, &routers_url, &api_key, &routers, &mut routers_etag).await;
 
     let mut tick = tokio::time::interval(interval);

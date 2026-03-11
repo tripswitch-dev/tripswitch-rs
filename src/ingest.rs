@@ -194,7 +194,10 @@ async fn send_batch(
             Ok(resp) => {
                 let status = resp.status().as_u16();
                 if (200..300).contains(&status) {
-                    debug!("ingest batch sent successfully ({} samples)", payload.samples.len());
+                    debug!(
+                        "ingest batch sent successfully ({} samples)",
+                        payload.samples.len()
+                    );
                     return;
                 }
                 if status == 401 || status == 403 {
