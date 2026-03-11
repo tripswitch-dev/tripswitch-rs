@@ -48,6 +48,17 @@ impl AdminClient {
         NotificationChannel
     );
 
+    /// Create a pager that iterates over all project keys in a project.
+    pub fn list_project_keys_pager(&self, project_id: impl Into<String>) -> Pager<ProjectKey> {
+        let client = self.clone();
+        let pid = project_id.into();
+        Pager::new(Box::new(move |_page| {
+            let client = client.clone();
+            let pid = pid.clone();
+            Box::pin(async move { client.list_project_keys(&pid).await })
+        }))
+    }
+
     /// Create a pager that iterates over all events in a project.
     pub fn list_events_pager(
         &self,
