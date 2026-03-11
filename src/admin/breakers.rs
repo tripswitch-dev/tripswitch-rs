@@ -7,6 +7,14 @@ impl AdminClient {
         &self,
         project_id: &str,
         params: Option<&ListParams>,
+    ) -> Result<ListBreakersResponse, AdminError> {
+        self.list_breakers_with_opts(project_id, params, None).await
+    }
+
+    pub async fn list_breakers_with_opts(
+        &self,
+        project_id: &str,
+        params: Option<&ListParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListBreakersResponse, AdminError> {
         let url = self.url(&format!("/v1/projects/{project_id}/breakers"));
@@ -24,6 +32,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         breaker_id: &str,
+    ) -> Result<Breaker, AdminError> {
+        self.get_breaker_with_opts(project_id, breaker_id, None)
+            .await
+    }
+
+    pub async fn get_breaker_with_opts(
+        &self,
+        project_id: &str,
+        breaker_id: &str,
         opts: Option<&RequestOptions>,
     ) -> Result<Breaker, AdminError> {
         let builder = self
@@ -34,6 +51,14 @@ impl AdminClient {
     }
 
     pub async fn create_breaker(
+        &self,
+        project_id: &str,
+        input: &CreateBreakerInput,
+    ) -> Result<Breaker, AdminError> {
+        self.create_breaker_with_opts(project_id, input, None).await
+    }
+
+    pub async fn create_breaker_with_opts(
         &self,
         project_id: &str,
         input: &CreateBreakerInput,
@@ -52,6 +77,16 @@ impl AdminClient {
         project_id: &str,
         breaker_id: &str,
         input: &UpdateBreakerInput,
+    ) -> Result<Breaker, AdminError> {
+        self.update_breaker_with_opts(project_id, breaker_id, input, None)
+            .await
+    }
+
+    pub async fn update_breaker_with_opts(
+        &self,
+        project_id: &str,
+        breaker_id: &str,
+        input: &UpdateBreakerInput,
         opts: Option<&RequestOptions>,
     ) -> Result<Breaker, AdminError> {
         let builder = self
@@ -63,6 +98,15 @@ impl AdminClient {
     }
 
     pub async fn delete_breaker(
+        &self,
+        project_id: &str,
+        breaker_id: &str,
+    ) -> Result<(), AdminError> {
+        self.delete_breaker_with_opts(project_id, breaker_id, None)
+            .await
+    }
+
+    pub async fn delete_breaker_with_opts(
         &self,
         project_id: &str,
         breaker_id: &str,
@@ -79,6 +123,14 @@ impl AdminClient {
         &self,
         project_id: &str,
         input: &SyncBreakersInput,
+    ) -> Result<Vec<Breaker>, AdminError> {
+        self.sync_breakers_with_opts(project_id, input, None).await
+    }
+
+    pub async fn sync_breakers_with_opts(
+        &self,
+        project_id: &str,
+        input: &SyncBreakersInput,
         opts: Option<&RequestOptions>,
     ) -> Result<Vec<Breaker>, AdminError> {
         let builder = self
@@ -90,6 +142,15 @@ impl AdminClient {
     }
 
     pub async fn get_breaker_state(
+        &self,
+        project_id: &str,
+        breaker_id: &str,
+    ) -> Result<BreakerState, AdminError> {
+        self.get_breaker_state_with_opts(project_id, breaker_id, None)
+            .await
+    }
+
+    pub async fn get_breaker_state_with_opts(
         &self,
         project_id: &str,
         breaker_id: &str,
@@ -108,6 +169,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         input: &BatchGetBreakerStatesInput,
+    ) -> Result<Vec<BreakerState>, AdminError> {
+        self.batch_get_breaker_states_with_opts(project_id, input, None)
+            .await
+    }
+
+    pub async fn batch_get_breaker_states_with_opts(
+        &self,
+        project_id: &str,
+        input: &BatchGetBreakerStatesInput,
         opts: Option<&RequestOptions>,
     ) -> Result<Vec<BreakerState>, AdminError> {
         let builder = self
@@ -119,6 +189,16 @@ impl AdminClient {
     }
 
     pub async fn update_breaker_metadata(
+        &self,
+        project_id: &str,
+        breaker_id: &str,
+        metadata: &serde_json::Value,
+    ) -> Result<Breaker, AdminError> {
+        self.update_breaker_metadata_with_opts(project_id, breaker_id, metadata, None)
+            .await
+    }
+
+    pub async fn update_breaker_metadata_with_opts(
         &self,
         project_id: &str,
         breaker_id: &str,

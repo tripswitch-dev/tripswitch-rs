@@ -18,7 +18,7 @@ fn project_id() -> String {
 async fn test_get_project() {
     let client = admin_client();
     let pid = project_id();
-    let project = client.get_project(&pid, None).await.unwrap();
+    let project = client.get_project(&pid).await.unwrap();
     assert_eq!(project.id, pid);
 }
 
@@ -27,7 +27,7 @@ async fn test_get_project() {
 async fn test_list_breakers() {
     let client = admin_client();
     let pid = project_id();
-    let resp = client.list_breakers(&pid, None, None).await.unwrap();
+    let resp = client.list_breakers(&pid, None).await.unwrap();
     assert!(resp.total >= 0);
 }
 
@@ -36,7 +36,7 @@ async fn test_list_breakers() {
 async fn test_list_routers() {
     let client = admin_client();
     let pid = project_id();
-    let resp = client.list_routers(&pid, None, None).await.unwrap();
+    let resp = client.list_routers(&pid, None).await.unwrap();
     assert!(resp.total >= 0);
 }
 
@@ -45,7 +45,7 @@ async fn test_list_routers() {
 async fn test_list_events() {
     let client = admin_client();
     let pid = project_id();
-    let resp = client.list_events(&pid, None, None).await.unwrap();
+    let resp = client.list_events(&pid, None).await.unwrap();
     assert!(resp.total >= 0);
 }
 
@@ -54,10 +54,7 @@ async fn test_list_events() {
 async fn test_list_notification_channels() {
     let client = admin_client();
     let pid = project_id();
-    let resp = client
-        .list_notification_channels(&pid, None, None)
-        .await
-        .unwrap();
+    let resp = client.list_notification_channels(&pid, None).await.unwrap();
     assert!(resp.total >= 0);
 }
 
@@ -82,11 +79,11 @@ async fn test_breaker_crud() {
         cooldown: None,
         metadata: None,
     };
-    let breaker = client.create_breaker(&pid, &input, None).await.unwrap();
+    let breaker = client.create_breaker(&pid, &input).await.unwrap();
     assert_eq!(breaker.metric, "error_rate");
 
     // Get
-    let fetched = client.get_breaker(&pid, &breaker.id, None).await.unwrap();
+    let fetched = client.get_breaker(&pid, &breaker.id).await.unwrap();
     assert_eq!(fetched.id, breaker.id);
 
     // Update
@@ -104,18 +101,15 @@ async fn test_breaker_crud() {
         metadata: None,
     };
     let updated = client
-        .update_breaker(&pid, &breaker.id, &update, None)
+        .update_breaker(&pid, &breaker.id, &update)
         .await
         .unwrap();
     assert_eq!(updated.description.as_deref(), Some("updated description"));
 
     // Delete
-    client
-        .delete_breaker(&pid, &breaker.id, None)
-        .await
-        .unwrap();
+    client.delete_breaker(&pid, &breaker.id).await.unwrap();
 
     // Verify deleted
-    let result = client.get_breaker(&pid, &breaker.id, None).await;
+    let result = client.get_breaker(&pid, &breaker.id).await;
     assert!(result.is_err());
 }

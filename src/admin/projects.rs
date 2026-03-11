@@ -6,6 +6,13 @@ impl AdminClient {
     pub async fn list_projects(
         &self,
         params: Option<&ListParams>,
+    ) -> Result<ListProjectsResponse, AdminError> {
+        self.list_projects_with_opts(params, None).await
+    }
+
+    pub async fn list_projects_with_opts(
+        &self,
+        params: Option<&ListParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListProjectsResponse, AdminError> {
         let url = self.url("/v1/projects");
@@ -19,7 +26,11 @@ impl AdminClient {
         self.do_request(builder, opts).await
     }
 
-    pub async fn get_project(
+    pub async fn get_project(&self, project_id: &str) -> Result<Project, AdminError> {
+        self.get_project_with_opts(project_id, None).await
+    }
+
+    pub async fn get_project_with_opts(
         &self,
         project_id: &str,
         opts: Option<&RequestOptions>,
@@ -31,7 +42,11 @@ impl AdminClient {
         self.do_request(builder, opts).await
     }
 
-    pub async fn create_project(
+    pub async fn create_project(&self, input: &CreateProjectInput) -> Result<Project, AdminError> {
+        self.create_project_with_opts(input, None).await
+    }
+
+    pub async fn create_project_with_opts(
         &self,
         input: &CreateProjectInput,
         opts: Option<&RequestOptions>,
@@ -45,6 +60,14 @@ impl AdminClient {
     }
 
     pub async fn update_project(
+        &self,
+        project_id: &str,
+        input: &UpdateProjectInput,
+    ) -> Result<Project, AdminError> {
+        self.update_project_with_opts(project_id, input, None).await
+    }
+
+    pub async fn update_project_with_opts(
         &self,
         project_id: &str,
         input: &UpdateProjectInput,
@@ -62,6 +85,15 @@ impl AdminClient {
         &self,
         project_id: &str,
         confirm_name: &str,
+    ) -> Result<(), AdminError> {
+        self.delete_project_with_opts(project_id, confirm_name, None)
+            .await
+    }
+
+    pub async fn delete_project_with_opts(
+        &self,
+        project_id: &str,
+        confirm_name: &str,
         opts: Option<&RequestOptions>,
     ) -> Result<(), AdminError> {
         let builder = self
@@ -73,6 +105,13 @@ impl AdminClient {
     }
 
     pub async fn rotate_ingest_secret(
+        &self,
+        project_id: &str,
+    ) -> Result<IngestSecretRotation, AdminError> {
+        self.rotate_ingest_secret_with_opts(project_id, None).await
+    }
+
+    pub async fn rotate_ingest_secret_with_opts(
         &self,
         project_id: &str,
         opts: Option<&RequestOptions>,

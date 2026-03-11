@@ -283,7 +283,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let project = client.get_project("proj_123", None).await.unwrap();
+        let project = client.get_project("proj_123").await.unwrap();
 
         mock.assert();
         assert_eq!(project.id, "proj_123");
@@ -305,7 +305,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let resp = client.list_projects(None, None).await.unwrap();
+        let resp = client.list_projects(None).await.unwrap();
 
         mock.assert();
         assert_eq!(resp.data.len(), 2);
@@ -332,7 +332,7 @@ mod tests {
             name: "my-project".to_string(),
             description: None,
         };
-        let project = client.create_project(&input, None).await.unwrap();
+        let project = client.create_project(&input).await.unwrap();
 
         mock.assert();
         assert_eq!(project.name, "my-project");
@@ -358,10 +358,7 @@ mod tests {
             name: Some("Updated Name".to_string()),
             description: None,
         };
-        let project = client
-            .update_project("proj_123", &input, None)
-            .await
-            .unwrap();
+        let project = client.update_project("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert_eq!(project.name, "Updated Name");
@@ -379,7 +376,7 @@ mod tests {
 
         let client = test_client(&server);
         client
-            .delete_project("proj_123", "My Project", None)
+            .delete_project("proj_123", "My Project")
             .await
             .unwrap();
 
@@ -423,10 +420,7 @@ mod tests {
             cooldown: None,
             metadata: None,
         };
-        let breaker = client
-            .create_breaker("proj_123", &input, None)
-            .await
-            .unwrap();
+        let breaker = client.create_breaker("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert_eq!(breaker.id, "breaker_456");
@@ -460,7 +454,7 @@ mod tests {
             per_page: Some(10),
         };
         let resp = client
-            .list_breakers("proj_123", Some(&params), None)
+            .list_breakers("proj_123", Some(&params))
             .await
             .unwrap();
 
@@ -479,7 +473,7 @@ mod tests {
 
         let client = test_client(&server);
         client
-            .delete_breaker("proj_123", "breaker_456", None)
+            .delete_breaker("proj_123", "breaker_456")
             .await
             .unwrap();
 
@@ -511,10 +505,7 @@ mod tests {
             mode: Some(RouterMode::RoundRobin),
             metadata: None,
         };
-        let router = client
-            .create_router("proj_123", &input, None)
-            .await
-            .unwrap();
+        let router = client.create_router("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert_eq!(router.id, "router_789");
@@ -536,7 +527,7 @@ mod tests {
             breaker_id: "breaker_456".to_string(),
         };
         client
-            .link_breaker("proj_123", "router_789", &input, None)
+            .link_breaker("proj_123", "router_789", &input)
             .await
             .unwrap();
 
@@ -575,7 +566,7 @@ mod tests {
             enabled: None,
         };
         let channel = client
-            .create_notification_channel("proj_123", &input, None)
+            .create_notification_channel("proj_123", &input)
             .await
             .unwrap();
 
@@ -615,10 +606,7 @@ mod tests {
             breaker_id: Some("b_456".to_string()),
             ..Default::default()
         };
-        let resp = client
-            .list_events("proj_123", Some(&params), None)
-            .await
-            .unwrap();
+        let resp = client.list_events("proj_123", Some(&params)).await.unwrap();
 
         mock.assert();
         assert_eq!(resp.data.len(), 2);
@@ -640,7 +628,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let err = client.get_project("missing", None).await.unwrap_err();
+        let err = client.get_project("missing").await.unwrap_err();
 
         assert!(err.is_not_found());
         let api_err = err.api_error().unwrap();
@@ -663,7 +651,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let err = client.get_project("proj_123", None).await.unwrap_err();
+        let err = client.get_project("proj_123").await.unwrap_err();
 
         assert!(err.is_rate_limited());
         let api_err = err.api_error().unwrap();
@@ -682,7 +670,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let err = client.get_project("proj_123", None).await.unwrap_err();
+        let err = client.get_project("proj_123").await.unwrap_err();
         assert!(err.is_unauthorized());
     }
 
@@ -702,7 +690,7 @@ mod tests {
             name: "dup".to_string(),
             description: None,
         };
-        let err = client.create_project(&input, None).await.unwrap_err();
+        let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_conflict());
     }
 
@@ -722,7 +710,7 @@ mod tests {
             name: "".to_string(),
             description: None,
         };
-        let err = client.create_project(&input, None).await.unwrap_err();
+        let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_validation());
     }
 
@@ -738,7 +726,7 @@ mod tests {
         });
 
         let client = test_client(&server);
-        let err = client.get_project("proj_123", None).await.unwrap_err();
+        let err = client.get_project("proj_123").await.unwrap_err();
         assert!(err.is_server_fault());
     }
 
@@ -747,7 +735,7 @@ mod tests {
         let client = AdminClient::builder("eb_admin_test")
             .base_url("http://127.0.0.1:1")
             .build();
-        let err = client.get_project("proj_123", None).await.unwrap_err();
+        let err = client.get_project("proj_123").await.unwrap_err();
         assert!(err.is_transport());
     }
 
@@ -775,7 +763,10 @@ mod tests {
             timeout: None,
             headers: None,
         };
-        client.get_project("proj_123", Some(&opts)).await.unwrap();
+        client
+            .get_project_with_opts("proj_123", Some(&opts))
+            .await
+            .unwrap();
 
         mock.assert();
     }
@@ -801,7 +792,10 @@ mod tests {
             headers: Some(extra_headers),
             ..Default::default()
         };
-        client.get_project("proj_123", Some(&opts)).await.unwrap();
+        client
+            .get_project_with_opts("proj_123", Some(&opts))
+            .await
+            .unwrap();
 
         mock.assert();
     }
@@ -826,7 +820,7 @@ mod tests {
             ..Default::default()
         };
         let err = client
-            .get_project("proj_123", Some(&opts))
+            .get_project_with_opts("proj_123", Some(&opts))
             .await
             .unwrap_err();
         assert!(err.is_transport());
@@ -864,10 +858,7 @@ mod tests {
             cooldown: None,
             metadata: Some(serde_json::json!({"region": "us-east-1"})),
         };
-        let breaker = client
-            .create_breaker("proj_123", &input, None)
-            .await
-            .unwrap();
+        let breaker = client.create_breaker("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert!(breaker.metadata.is_some());
@@ -902,10 +893,7 @@ mod tests {
             cooldown: None,
             metadata: None,
         };
-        let breaker = client
-            .create_breaker("proj_123", &input, None)
-            .await
-            .unwrap();
+        let breaker = client.create_breaker("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert!(breaker.metadata.is_none());
