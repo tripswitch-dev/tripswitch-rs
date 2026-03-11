@@ -34,6 +34,10 @@ pub struct SdkStats {
     pub buffer_capacity: usize,
     pub sse_connected: bool,
     pub sse_reconnects: u64,
+    pub flush_failures: u64,
+    pub last_successful_flush: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_sse_event: Option<chrono::DateTime<chrono::Utc>>,
+    pub cached_breakers: usize,
 }
 
 /// Breaker metadata from the metadata cache.
