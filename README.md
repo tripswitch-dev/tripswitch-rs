@@ -324,19 +324,41 @@ match result {
 Use `.select_breakers()` and `.select_router()` to choose breakers or routers at runtime based on cached metadata. The SDK periodically syncs metadata from the API (default 30s), and your selector receives the current snapshot.
 
 ```rust
+use tripswitch::BreakerMeta;
+
+fn breakers_in_region(breakers: &[BreakerMeta]) -> Vec<String> {
+    breakers
+        .iter()
+        .filter(|b| {
+            b.metadata.as_ref().and_then(|m| m.get("region"))
+                == Some(&"us-east-1".to_string())
+        })
+        .map(|b| b.name.clone())
+        .collect()
+}
+
 // Gate on breakers matching a metadata property
 let result = client
     .execute(
         || async { do_work().await },
-        Some(ExecuteOptions::new().select_breakers(|breakers| {
-            breakers
-                .iter()
-                .filter(|b| b.metadata.as_ref().and_then(|m| m.get("region")) == Some(&"us-east-1".to_string()))
-                .map(|b| b.name.clone())
-                .collect()
-        })),
+        Some(ExecuteOptions::new().select_breakers(breakers_in_region)),
     )
     .await;
+```
+
+```rust
+use tripswitch::RouterMeta;
+
+fn production_router(routers: &[RouterMeta]) -> String {
+    routers
+        .iter()
+        .find(|r| {
+            r.metadata.as_ref().and_then(|m| m.get("env"))
+                == Some(&"production".to_string())
+        })
+        .map(|r| r.id.clone())
+        .unwrap_or_default()
+}
 
 // Route samples to a router matching a metadata property
 let result = client
@@ -344,13 +366,7 @@ let result = client
         || async { do_work().await },
         Some(
             ExecuteOptions::new()
-                .select_router(|routers| {
-                    routers
-                        .iter()
-                        .find(|r| r.metadata.as_ref().and_then(|m| m.get("env")) == Some(&"production".to_string()))
-                        .map(|r| r.id.clone())
-                        .unwrap_or_default()
-                })
+                .select_router(production_router)
                 .metric("latency", MetricValue::Latency),
         ),
     )
