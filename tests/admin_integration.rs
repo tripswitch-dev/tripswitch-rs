@@ -114,13 +114,27 @@ async fn test_breaker_crud() {
 
     let update = UpdateBreakerInput {
         threshold: Some(0.8),
-        name: None, metric: None, kind: None, kind_params: None, op: None,
-        window_ms: None, min_count: None, min_state_duration_ms: None,
-        cooldown_ms: None, eval_interval_ms: None, half_open_backoff_enabled: None,
-        half_open_backoff_cap_ms: None, half_open_indeterminate_policy: None,
-        recovery_allow_rate_ramp_steps: None, actions: None, metadata: None,
+        name: None,
+        metric: None,
+        kind: None,
+        kind_params: None,
+        op: None,
+        window_ms: None,
+        min_count: None,
+        min_state_duration_ms: None,
+        cooldown_ms: None,
+        eval_interval_ms: None,
+        half_open_backoff_enabled: None,
+        half_open_backoff_cap_ms: None,
+        half_open_indeterminate_policy: None,
+        recovery_allow_rate_ramp_steps: None,
+        actions: None,
+        metadata: None,
     };
-    let updated = client.update_breaker(&pid, &breaker.id, &update).await.unwrap();
+    let updated = client
+        .update_breaker(&pid, &breaker.id, &update)
+        .await
+        .unwrap();
     assert!((updated.threshold - 0.8).abs() < f64::EPSILON);
 
     client.delete_breaker(&pid, &breaker.id).await.unwrap();
