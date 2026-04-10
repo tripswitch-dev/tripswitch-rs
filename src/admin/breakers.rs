@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::errors::AdminError;
 use super::types::*;
 use super::{AdminClient, RequestOptions};
@@ -192,7 +194,7 @@ impl AdminClient {
         &self,
         project_id: &str,
         breaker_id: &str,
-        metadata: &serde_json::Value,
+        metadata: &HashMap<String, String>,
     ) -> Result<Breaker, AdminError> {
         self.update_breaker_metadata_with_opts(project_id, breaker_id, metadata, None)
             .await
@@ -202,7 +204,7 @@ impl AdminClient {
         &self,
         project_id: &str,
         breaker_id: &str,
-        metadata: &serde_json::Value,
+        metadata: &HashMap<String, String>,
         opts: Option<&RequestOptions>,
     ) -> Result<Breaker, AdminError> {
         let builder = self

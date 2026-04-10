@@ -28,7 +28,7 @@ async fn test_list_breakers() {
     let client = admin_client();
     let pid = project_id();
     let resp = client.list_breakers(&pid, None).await.unwrap();
-    assert!(resp.total >= 0);
+    assert!(resp.count >= 0);
 }
 
 #[tokio::test]
@@ -37,7 +37,8 @@ async fn test_list_routers() {
     let client = admin_client();
     let pid = project_id();
     let resp = client.list_routers(&pid, None).await.unwrap();
-    assert!(resp.total >= 0);
+    // routers response doesn't have a count field, just check it doesn't error
+    let _ = resp.routers;
 }
 
 #[tokio::test]
@@ -46,7 +47,7 @@ async fn test_list_events() {
     let client = admin_client();
     let pid = project_id();
     let resp = client.list_events(&pid, None).await.unwrap();
-    assert!(resp.total >= 0);
+    assert!(resp.returned >= 0);
 }
 
 #[tokio::test]
@@ -55,7 +56,8 @@ async fn test_list_notification_channels() {
     let client = admin_client();
     let pid = project_id();
     let resp = client.list_notification_channels(&pid, None).await.unwrap();
-    assert!(resp.total >= 0);
+    // items list is present
+    let _ = resp.items;
 }
 
 #[tokio::test]
@@ -68,15 +70,20 @@ async fn test_breaker_crud() {
     let input = CreateBreakerInput {
         name: format!("test-breaker-rs-{}", chrono::Utc::now().timestamp()),
         metric: "error_rate".to_string(),
+        kind: BreakerKind::ErrorRate,
+        kind_params: None,
         threshold: 0.5,
         op: BreakerOp::Gt,
-        window_size: 60000,
-        min_samples: 10,
-        kind: None,
-        description: Some("test breaker from Rust SDK".to_string()),
-        half_open_policy: None,
-        half_open_max_rate: None,
-        cooldown: None,
+        window_ms: Some(60000),
+        min_count: Some(10),
+        min_state_duration_ms: None,
+        cooldown_ms: None,
+        eval_interval_ms: None,
+        half_open_backoff_enabled: None,
+        half_open_backoff_cap_ms: None,
+        half_open_indeterminate_policy: None,
+        recovery_allow_rate_ramp_steps: None,
+        actions: None,
         metadata: None,
     };
     let breaker = client.create_breaker(&pid, &input).await.unwrap();
@@ -88,23 +95,29 @@ async fn test_breaker_crud() {
 
     // Update
     let update = UpdateBreakerInput {
-        description: Some("updated description".to_string()),
+        threshold: Some(0.8),
         name: None,
         metric: None,
-        threshold: None,
+        kind: None,
+        kind_params: None,
         op: None,
-        window_size: None,
-        min_samples: None,
-        half_open_policy: None,
-        half_open_max_rate: None,
-        cooldown: None,
+        window_ms: None,
+        min_count: None,
+        min_state_duration_ms: None,
+        cooldown_ms: None,
+        eval_interval_ms: None,
+        half_open_backoff_enabled: None,
+        half_open_backoff_cap_ms: None,
+        half_open_indeterminate_policy: None,
+        recovery_allow_rate_ramp_steps: None,
+        actions: None,
         metadata: None,
     };
     let updated = client
         .update_breaker(&pid, &breaker.id, &update)
         .await
         .unwrap();
-    assert_eq!(updated.description.as_deref(), Some("updated description"));
+    assert!((updated.threshold - 0.8).abs() < f64::EPSILON);
 
     // Delete
     client.delete_breaker(&pid, &breaker.id).await.unwrap();

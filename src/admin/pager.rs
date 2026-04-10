@@ -3,24 +3,34 @@ use std::future::Future;
 use std::pin::Pin;
 
 use super::errors::AdminError;
-use super::types::Page;
+
+/// Result of fetching a page: items + optional next cursor.
+pub struct CursorPage<T> {
+    pub items: Vec<T>,
+    pub next_cursor: Option<String>,
+}
 
 type FetchFn<T> = Box<
-    dyn Fn(i64) -> Pin<Box<dyn Future<Output = Result<Page<T>, AdminError>> + Send>> + Send + Sync,
+    dyn Fn(
+            Option<String>,
+        ) -> Pin<Box<dyn Future<Output = Result<CursorPage<T>, AdminError>> + Send>>
+        + Send
+        + Sync,
 >;
 
-/// An async page iterator for admin list endpoints.
+/// An async cursor-based page iterator for admin list endpoints.
 ///
 /// ```ignore
-/// let mut pager = client.list_breakers_pager("proj_123", None);
-/// while let Some(breaker) = pager.next().await? {
-///     println!("{}", breaker.name);
+/// let mut pager = client.list_events_pager("proj_123", None);
+/// while let Some(event) = pager.next().await? {
+///     println!("{}", event.id);
 /// }
 /// ```
 pub struct Pager<T> {
     fetch: FetchFn<T>,
-    current_page: i64,
+    next_cursor: Option<String>,
     buffer: VecDeque<T>,
+    started: bool,
     done: bool,
 }
 
@@ -28,8 +38,9 @@ impl<T: Send + 'static> Pager<T> {
     pub(crate) fn new(fetch: FetchFn<T>) -> Self {
         Self {
             fetch,
-            current_page: 1,
+            next_cursor: None,
             buffer: VecDeque::new(),
+            started: false,
             done: false,
         }
     }
@@ -46,13 +57,30 @@ impl<T: Send + 'static> Pager<T> {
                 return Ok(None);
             }
 
-            let page = (self.fetch)(self.current_page).await?;
-            self.buffer = page.data.into();
+            let cursor = if self.started {
+                self.next_cursor.take()
+            } else {
+                self.started = true;
+                None
+            };
 
-            if self.current_page >= page.total_pages || self.buffer.is_empty() {
+            // If we've already started and there's no next cursor, we're done
+            if self.started && cursor.is_none() && !self.buffer.is_empty() {
+                self.done = true;
+                continue;
+            }
+
+            let page = (self.fetch)(cursor).await?;
+            self.buffer = page.items.into();
+
+            match page.next_cursor {
+                Some(c) if !c.is_empty() => self.next_cursor = Some(c),
+                _ => self.done = true,
+            }
+
+            if self.buffer.is_empty() {
                 self.done = true;
             }
-            self.current_page += 1;
         }
     }
 

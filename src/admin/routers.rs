@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::errors::AdminError;
 use super::types::*;
 use super::{AdminClient, RequestOptions};
@@ -171,7 +173,7 @@ impl AdminClient {
         &self,
         project_id: &str,
         router_id: &str,
-        metadata: &serde_json::Value,
+        metadata: &HashMap<String, String>,
     ) -> Result<Router, AdminError> {
         self.update_router_metadata_with_opts(project_id, router_id, metadata, None)
             .await
@@ -181,7 +183,7 @@ impl AdminClient {
         &self,
         project_id: &str,
         router_id: &str,
-        metadata: &serde_json::Value,
+        metadata: &HashMap<String, String>,
         opts: Option<&RequestOptions>,
     ) -> Result<Router, AdminError> {
         let builder = self
