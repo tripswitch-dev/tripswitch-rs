@@ -1,13 +1,23 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ── Enums ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BreakerKind {
-    Standard,
-    Canary,
+    ErrorRate,
+    Avg,
+    P95,
+    Max,
+    Min,
+    Sum,
+    Stddev,
+    Count,
+    Percentile,
+    ConsecutiveFailures,
+    Delta,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,158 +27,177 @@ pub enum BreakerOp {
     Gte,
     Lt,
     Lte,
-    Eq,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HalfOpenPolicy {
-    Probabilistic,
-    Disabled,
+    Optimistic,
+    Conservative,
+    Pessimistic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouterMode {
-    Random,
-    RoundRobin,
-    Hash,
+    Static,
+    Canary,
+    Weighted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationChannelType {
     Slack,
+    #[serde(rename = "pagerduty")]
+    PagerDuty,
     Email,
     Webhook,
-    PagerDuty,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationEventType {
-    BreakerOpened,
-    BreakerClosed,
-    BreakerHalfOpened,
-    BreakerCreated,
-    BreakerDeleted,
+    Trip,
+    Recover,
 }
-
-pub use crate::types::BreakerStateValue;
 
 // ── Domain Structs ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
+    #[serde(rename = "project_id")]
     pub id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub slack_webhook_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id_url_template: Option<String>,
+    #[serde(default)]
+    pub enable_signed_ingest: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Breaker {
     pub id: String,
-    pub project_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub router_ids: Vec<String>,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub kind: BreakerKind,
     pub metric: String,
-    pub threshold: f64,
+    pub kind: BreakerKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind_params: Option<HashMap<String, serde_json::Value>>,
     pub op: BreakerOp,
-    pub window_size: i64,
-    pub min_samples: i64,
+    pub threshold: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_policy: Option<HalfOpenPolicy>,
+    pub window_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_max_rate: Option<f64>,
+    pub min_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cooldown: Option<i64>,
+    pub min_state_duration_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub cooldown_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_interval_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_confirmation_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_backoff_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_backoff_cap_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_indeterminate_policy: Option<HalfOpenPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_window_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_allow_rate_ramp_steps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BreakerState {
     pub breaker_id: String,
-    pub breaker_name: String,
-    pub state: BreakerStateValue,
+    pub state: String,
+    pub allow_rate: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub allow_rate: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_evaluated_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Router {
     pub id: String,
-    pub project_id: String,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
     pub mode: RouterMode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
     #[serde(default)]
-    pub breaker_ids: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub breaker_count: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub breakers: Option<Vec<Breaker>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inserted_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationChannel {
     pub id: String,
-    pub project_id: String,
-    pub name: String,
-    pub channel_type: NotificationChannelType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<serde_json::Value>,
+    pub project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub channel: NotificationChannelType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<HashMap<String, serde_json::Value>>,
     #[serde(default)]
     pub events: Vec<NotificationEventType>,
     #[serde(default)]
-    pub breaker_ids: Vec<String>,
     pub enabled: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
     pub project_id: String,
-    pub event_type: String,
+    pub breaker_id: String,
+    pub from_state: String,
+    pub to_state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub breaker_id: Option<String>,
+    pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub breaker_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
+    pub timestamp: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectKey {
     pub id: String,
-    pub project_id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prefix: Option<String>,
+    pub key_prefix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scopes: Option<Vec<String>>,
-    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<DateTime<Utc>>,
+    pub inserted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProjectKeyResponse {
-    pub key: ProjectKey,
-    pub raw_key: String,
+    pub id: String,
+    pub name: String,
+    pub key: String,
+    pub key_prefix: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,8 +210,6 @@ pub struct IngestSecretRotation {
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateProjectInput {
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -190,29 +217,44 @@ pub struct UpdateProjectInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub slack_webhook_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id_url_template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_signed_ingest: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateBreakerInput {
     pub name: String,
     pub metric: String,
-    pub threshold: f64,
+    pub kind: BreakerKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind_params: Option<HashMap<String, serde_json::Value>>,
     pub op: BreakerOp,
-    pub window_size: i64,
-    pub min_samples: i64,
+    pub threshold: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub kind: Option<BreakerKind>,
+    pub window_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub min_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_policy: Option<HalfOpenPolicy>,
+    pub min_state_duration_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_max_rate: Option<f64>,
+    pub cooldown_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cooldown: Option<i64>,
+    pub eval_interval_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
+    pub half_open_backoff_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_backoff_cap_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_indeterminate_policy: Option<HalfOpenPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_allow_rate_ramp_steps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -220,36 +262,49 @@ pub struct UpdateBreakerInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub metric: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub threshold: Option<f64>,
+    pub kind: Option<BreakerKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind_params: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub op: Option<BreakerOp>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_size: Option<i64>,
+    pub threshold: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub min_samples: Option<i64>,
+    pub window_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_policy: Option<HalfOpenPolicy>,
+    pub min_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub half_open_max_rate: Option<f64>,
+    pub min_state_duration_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cooldown: Option<i64>,
+    pub cooldown_ms: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
+    pub eval_interval_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_backoff_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_backoff_cap_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub half_open_indeterminate_policy: Option<HalfOpenPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_allow_rate_ramp_steps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateRouterInput {
     pub name: String,
+    pub mode: RouterMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode: Option<RouterMode>,
+    pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -261,19 +316,19 @@ pub struct UpdateRouterInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<RouterMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateNotificationChannelInput {
     pub name: String,
-    pub channel_type: NotificationChannelType,
+    pub channel: NotificationChannelType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<serde_json::Value>,
+    pub config: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<NotificationEventType>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub breaker_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
 }
@@ -283,32 +338,17 @@ pub struct UpdateNotificationChannelInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<serde_json::Value>,
+    pub config: Option<HashMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<NotificationEventType>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub breaker_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateProjectKeyInput {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scopes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct UpdateProjectKeyInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scopes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<DateTime<Utc>>,
 }
 
 // ── Helper / Special Structs ───────────────────────────────────────
@@ -320,7 +360,10 @@ pub struct SyncBreakersInput {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BatchGetBreakerStatesInput {
-    pub breaker_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub breaker_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub router_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -328,22 +371,95 @@ pub struct LinkBreakerInput {
     pub breaker_id: String,
 }
 
+// ── Workspaces ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub org_id: String,
+    pub inserted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateWorkspaceInput {
+    pub name: String,
+    pub slug: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateWorkspaceInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListWorkspacesResponse {
+    pub workspaces: Vec<Workspace>,
+}
+
+// ── Response Wrappers ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListProjectsResponse {
+    pub projects: Vec<Project>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListBreakersResponse {
+    pub breakers: Vec<Breaker>,
+    pub count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListRoutersResponse {
+    pub routers: Vec<Router>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListEventsResponse {
+    pub events: Vec<Event>,
+    pub returned: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListNotificationChannelsResponse {
+    pub items: Vec<NotificationChannel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListProjectKeysResponse {
+    pub keys: Vec<ProjectKey>,
+    pub count: i64,
+}
+
 // ── Pagination ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
 pub struct ListParams {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
 }
 
 impl ListParams {
     pub fn to_query_pairs(&self) -> Vec<(&str, String)> {
         let mut pairs = Vec::new();
-        if let Some(page) = self.page {
-            pairs.push(("page", page.to_string()));
+        if let Some(ref cursor) = self.cursor {
+            pairs.push(("cursor", cursor.clone()));
         }
-        if let Some(per_page) = self.per_page {
-            pairs.push(("per_page", per_page.to_string()));
+        if let Some(limit) = self.limit {
+            pairs.push(("limit", limit.to_string()));
         }
         pairs
     }
@@ -351,46 +467,34 @@ impl ListParams {
 
 #[derive(Debug, Clone, Default)]
 pub struct ListEventsParams {
-    pub page: Option<i64>,
-    pub per_page: Option<i64>,
     pub breaker_id: Option<String>,
-    pub event_type: Option<String>,
+    pub start_time: Option<DateTime<Utc>>,
+    pub end_time: Option<DateTime<Utc>>,
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
 }
 
 impl ListEventsParams {
     pub fn to_query_pairs(&self) -> Vec<(&str, String)> {
         let mut pairs = Vec::new();
-        if let Some(page) = self.page {
-            pairs.push(("page", page.to_string()));
-        }
-        if let Some(per_page) = self.per_page {
-            pairs.push(("per_page", per_page.to_string()));
-        }
         if let Some(ref breaker_id) = self.breaker_id {
             pairs.push(("breaker_id", breaker_id.clone()));
         }
-        if let Some(ref event_type) = self.event_type {
-            pairs.push(("event_type", event_type.clone()));
+        if let Some(ref start_time) = self.start_time {
+            pairs.push(("start_time", start_time.to_rfc3339()));
+        }
+        if let Some(ref end_time) = self.end_time {
+            pairs.push(("end_time", end_time.to_rfc3339()));
+        }
+        if let Some(ref cursor) = self.cursor {
+            pairs.push(("cursor", cursor.clone()));
+        }
+        if let Some(limit) = self.limit {
+            pairs.push(("limit", limit.to_string()));
         }
         pairs
     }
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Page<T> {
-    pub data: Vec<T>,
-    pub page: i64,
-    pub per_page: i64,
-    pub total: i64,
-    pub total_pages: i64,
-}
-
-pub type ListProjectsResponse = Page<Project>;
-pub type ListBreakersResponse = Page<Breaker>;
-pub type ListRoutersResponse = Page<Router>;
-pub type ListNotificationChannelsResponse = Page<NotificationChannel>;
-pub type ListEventsResponse = Page<Event>;
-pub type ListProjectKeysResponse = Page<ProjectKey>;
 
 #[cfg(test)]
 mod tests {
@@ -400,18 +504,24 @@ mod tests {
 
     #[test]
     fn breaker_kind_serde() {
-        assert_eq!(
-            serde_json::to_string(&BreakerKind::Standard).unwrap(),
-            r#""standard""#
-        );
-        assert_eq!(
-            serde_json::to_string(&BreakerKind::Canary).unwrap(),
-            r#""canary""#
-        );
-        let rt: BreakerKind = serde_json::from_str(r#""standard""#).unwrap();
-        assert_eq!(rt, BreakerKind::Standard);
-        let rt: BreakerKind = serde_json::from_str(r#""canary""#).unwrap();
-        assert_eq!(rt, BreakerKind::Canary);
+        for (variant, expected) in [
+            (BreakerKind::ErrorRate, "error_rate"),
+            (BreakerKind::Avg, "avg"),
+            (BreakerKind::P95, "p95"),
+            (BreakerKind::Max, "max"),
+            (BreakerKind::Min, "min"),
+            (BreakerKind::Sum, "sum"),
+            (BreakerKind::Stddev, "stddev"),
+            (BreakerKind::Count, "count"),
+            (BreakerKind::Percentile, "percentile"),
+            (BreakerKind::ConsecutiveFailures, "consecutive_failures"),
+            (BreakerKind::Delta, "delta"),
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(json, format!("\"{expected}\""));
+            let rt: BreakerKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(rt, variant);
+        }
     }
 
     #[test]
@@ -421,7 +531,6 @@ mod tests {
             (BreakerOp::Gte, "gte"),
             (BreakerOp::Lt, "lt"),
             (BreakerOp::Lte, "lte"),
-            (BreakerOp::Eq, "eq"),
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{expected}\""));
@@ -433,8 +542,9 @@ mod tests {
     #[test]
     fn half_open_policy_serde() {
         for (variant, expected) in [
-            (HalfOpenPolicy::Probabilistic, "probabilistic"),
-            (HalfOpenPolicy::Disabled, "disabled"),
+            (HalfOpenPolicy::Optimistic, "optimistic"),
+            (HalfOpenPolicy::Conservative, "conservative"),
+            (HalfOpenPolicy::Pessimistic, "pessimistic"),
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{expected}\""));
@@ -446,9 +556,9 @@ mod tests {
     #[test]
     fn router_mode_serde() {
         for (variant, expected) in [
-            (RouterMode::Random, "random"),
-            (RouterMode::RoundRobin, "round_robin"),
-            (RouterMode::Hash, "hash"),
+            (RouterMode::Static, "static"),
+            (RouterMode::Canary, "canary"),
+            (RouterMode::Weighted, "weighted"),
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{expected}\""));
@@ -461,9 +571,9 @@ mod tests {
     fn notification_channel_type_serde() {
         for (variant, expected) in [
             (NotificationChannelType::Slack, "slack"),
+            (NotificationChannelType::PagerDuty, "pagerduty"),
             (NotificationChannelType::Email, "email"),
             (NotificationChannelType::Webhook, "webhook"),
-            (NotificationChannelType::PagerDuty, "pager_duty"),
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{expected}\""));
@@ -475,32 +585,12 @@ mod tests {
     #[test]
     fn notification_event_type_serde() {
         for (variant, expected) in [
-            (NotificationEventType::BreakerOpened, "breaker_opened"),
-            (NotificationEventType::BreakerClosed, "breaker_closed"),
-            (
-                NotificationEventType::BreakerHalfOpened,
-                "breaker_half_opened",
-            ),
-            (NotificationEventType::BreakerCreated, "breaker_created"),
-            (NotificationEventType::BreakerDeleted, "breaker_deleted"),
+            (NotificationEventType::Trip, "trip"),
+            (NotificationEventType::Recover, "recover"),
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             assert_eq!(json, format!("\"{expected}\""));
             let rt: NotificationEventType = serde_json::from_str(&json).unwrap();
-            assert_eq!(rt, variant);
-        }
-    }
-
-    #[test]
-    fn breaker_state_value_serde() {
-        for (variant, expected) in [
-            (BreakerStateValue::Open, "open"),
-            (BreakerStateValue::Closed, "closed"),
-            (BreakerStateValue::HalfOpen, "half_open"),
-        ] {
-            let json = serde_json::to_string(&variant).unwrap();
-            assert_eq!(json, format!("\"{expected}\""));
-            let rt: BreakerStateValue = serde_json::from_str(&json).unwrap();
             assert_eq!(rt, variant);
         }
     }
@@ -514,26 +604,26 @@ mod tests {
     }
 
     #[test]
-    fn list_params_partial() {
+    fn list_params_with_cursor() {
         let p = ListParams {
-            page: Some(2),
-            per_page: None,
+            cursor: Some("abc123".to_string()),
+            limit: None,
         };
         let pairs = p.to_query_pairs();
         assert_eq!(pairs.len(), 1);
-        assert_eq!(pairs[0], ("page", "2".to_string()));
+        assert_eq!(pairs[0], ("cursor", "abc123".to_string()));
     }
 
     #[test]
     fn list_params_full() {
         let p = ListParams {
-            page: Some(3),
-            per_page: Some(25),
+            cursor: Some("abc".to_string()),
+            limit: Some(25),
         };
         let pairs = p.to_query_pairs();
         assert_eq!(pairs.len(), 2);
-        assert_eq!(pairs[0], ("page", "3".to_string()));
-        assert_eq!(pairs[1], ("per_page", "25".to_string()));
+        assert_eq!(pairs[0], ("cursor", "abc".to_string()));
+        assert_eq!(pairs[1], ("limit", "25".to_string()));
     }
 
     // ── ListEventsParams::to_query_pairs ───────────────────────────
@@ -555,65 +645,64 @@ mod tests {
         assert_eq!(pairs[0], ("breaker_id", "b_123".to_string()));
     }
 
-    #[test]
-    fn list_events_params_full() {
-        let p = ListEventsParams {
-            page: Some(1),
-            per_page: Some(10),
-            breaker_id: Some("b_123".to_string()),
-            event_type: Some("breaker_opened".to_string()),
-        };
-        let pairs = p.to_query_pairs();
-        assert_eq!(pairs.len(), 4);
-    }
-
-    // ── Page<T> deserialization ─────────────────────────────────────
+    // ── Response deserialization ───────────────────────────────────
 
     #[test]
-    fn page_deserialize() {
-        let json = r#"{
-            "data": [{"id":"p1","name":"Proj 1","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}],
-            "page": 1,
-            "per_page": 10,
-            "total": 1,
-            "total_pages": 1
-        }"#;
-        let page: Page<Project> = serde_json::from_str(json).unwrap();
-        assert_eq!(page.data.len(), 1);
-        assert_eq!(page.page, 1);
-        assert_eq!(page.per_page, 10);
-        assert_eq!(page.total, 1);
-        assert_eq!(page.total_pages, 1);
-        assert_eq!(page.data[0].id, "p1");
+    fn list_projects_response_deserialize() {
+        let json =
+            r#"{"projects":[{"project_id":"p1","name":"Proj 1","enable_signed_ingest":false}]}"#;
+        let resp: ListProjectsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.projects.len(), 1);
+        assert_eq!(resp.projects[0].id, "p1");
     }
 
-    // ── Input struct serialization (skip_serializing_if) ───────────
+    #[test]
+    fn list_breakers_response_deserialize() {
+        let json = r#"{"breakers":[{"id":"b1","name":"test","metric":"latency","kind":"error_rate","op":"gt","threshold":0.5}],"count":1}"#;
+        let resp: ListBreakersResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.breakers.len(), 1);
+        assert_eq!(resp.count, 1);
+    }
+
+    #[test]
+    fn list_events_response_deserialize() {
+        let json = r#"{"events":[{"id":"e1","project_id":"p1","breaker_id":"b1","from_state":"closed","to_state":"open"}],"returned":1,"next_cursor":"abc"}"#;
+        let resp: ListEventsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.events.len(), 1);
+        assert_eq!(resp.returned, 1);
+        assert_eq!(resp.next_cursor.as_deref(), Some("abc"));
+    }
+
+    // ── Input struct serialization ─────────────────────────────────
 
     #[test]
     fn create_breaker_input_required_fields_only() {
         let input = CreateBreakerInput {
             name: "api-latency".to_string(),
             metric: "p99_latency".to_string(),
+            kind: BreakerKind::ErrorRate,
+            kind_params: None,
             threshold: 500.0,
             op: BreakerOp::Gt,
-            window_size: 300,
-            min_samples: 100,
-            kind: None,
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
+            window_ms: None,
+            min_count: None,
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
             metadata: None,
         };
         let json = serde_json::to_string(&input).unwrap();
         assert!(json.contains("\"name\":\"api-latency\""));
+        assert!(json.contains("\"kind\":\"error_rate\""));
         assert!(json.contains("\"threshold\":500.0"));
         assert!(json.contains("\"op\":\"gt\""));
-        // None fields should be omitted
-        assert!(!json.contains("\"kind\""));
-        assert!(!json.contains("\"description\""));
+        assert!(!json.contains("\"window_ms\""));
         assert!(!json.contains("\"metadata\""));
-        assert!(!json.contains("\"half_open_policy\""));
     }
 
     #[test]
@@ -621,36 +710,49 @@ mod tests {
         let input = CreateBreakerInput {
             name: "test".to_string(),
             metric: "latency".to_string(),
+            kind: BreakerKind::Avg,
+            kind_params: None,
             threshold: 100.0,
             op: BreakerOp::Gte,
-            window_size: 60,
-            min_samples: 10,
-            kind: Some(BreakerKind::Standard),
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
-            metadata: Some(serde_json::json!({"region": "us-east-1", "team": "payments"})),
+            window_ms: Some(60000),
+            min_count: Some(10),
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
+            metadata: Some(HashMap::from([(
+                "region".to_string(),
+                "us-east-1".to_string(),
+            )])),
         };
         let json = serde_json::to_string(&input).unwrap();
         assert!(json.contains("\"metadata\""));
         assert!(json.contains("us-east-1"));
-        assert!(json.contains("payments"));
     }
 
     #[test]
     fn update_breaker_input_single_field() {
         let input = UpdateBreakerInput {
             name: Some("new-name".to_string()),
-            description: None,
             metric: None,
+            kind: None,
+            kind_params: None,
             threshold: None,
             op: None,
-            window_size: None,
-            min_samples: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
+            window_ms: None,
+            min_count: None,
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
             metadata: None,
         };
         let json = serde_json::to_string(&input).unwrap();
@@ -658,55 +760,44 @@ mod tests {
     }
 
     #[test]
-    fn create_project_input_without_description() {
+    fn create_project_input_serialization() {
         let input = CreateProjectInput {
             name: "my-project".to_string(),
-            description: None,
         };
         let json = serde_json::to_string(&input).unwrap();
         assert_eq!(json, r#"{"name":"my-project"}"#);
     }
 
     #[test]
-    fn create_project_input_with_description() {
-        let input = CreateProjectInput {
-            name: "my-project".to_string(),
-            description: Some("A test project".to_string()),
-        };
-        let json = serde_json::to_string(&input).unwrap();
-        assert!(json.contains("\"description\":\"A test project\""));
-    }
-
-    #[test]
     fn create_router_input_with_mode() {
         let input = CreateRouterInput {
             name: "my-router".to_string(),
+            mode: RouterMode::Static,
             description: None,
-            mode: Some(RouterMode::RoundRobin),
+            enabled: None,
             metadata: None,
         };
         let json = serde_json::to_string(&input).unwrap();
-        assert!(json.contains("\"mode\":\"round_robin\""));
+        assert!(json.contains("\"mode\":\"static\""));
         assert!(!json.contains("\"description\""));
     }
 
     #[test]
-    fn create_notification_channel_input_with_channel_type() {
+    fn create_notification_channel_input_with_channel() {
         let input = CreateNotificationChannelInput {
             name: "my-channel".to_string(),
-            channel_type: NotificationChannelType::Slack,
+            channel: NotificationChannelType::Slack,
             config: None,
             events: Some(vec![
-                NotificationEventType::BreakerOpened,
-                NotificationEventType::BreakerClosed,
+                NotificationEventType::Trip,
+                NotificationEventType::Recover,
             ]),
-            breaker_ids: None,
             enabled: None,
         };
         let json = serde_json::to_string(&input).unwrap();
-        assert!(json.contains("\"channel_type\":\"slack\""));
-        assert!(json.contains("\"breaker_opened\""));
-        assert!(json.contains("\"breaker_closed\""));
+        assert!(json.contains("\"channel\":\"slack\""));
+        assert!(json.contains("\"trip\""));
+        assert!(json.contains("\"recover\""));
     }
 
     #[test]
@@ -722,9 +813,20 @@ mod tests {
     fn update_project_input_single_field() {
         let input = UpdateProjectInput {
             name: Some("Updated Name".to_string()),
-            description: None,
+            slack_webhook_url: None,
+            trace_id_url_template: None,
+            enable_signed_ingest: None,
         };
         let json = serde_json::to_string(&input).unwrap();
         assert_eq!(json, r#"{"name":"Updated Name"}"#);
+    }
+
+    #[test]
+    fn project_deserialize_with_rename() {
+        let json = r#"{"project_id":"p1","name":"Test","enable_signed_ingest":true}"#;
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert_eq!(project.id, "p1");
+        assert_eq!(project.name, "Test");
+        assert!(project.enable_signed_ingest);
     }
 }

@@ -9,6 +9,7 @@ mod pagers;
 mod project_keys;
 mod projects;
 mod routers;
+mod workspaces;
 
 use errors::{AdminError, ApiError};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -277,10 +278,9 @@ mod tests {
                 .path("/v1/projects/proj_123")
                 .header("Authorization", "Bearer eb_admin_test");
             then.status(200).json_body(json!({
-                "id": "proj_123",
+                "project_id": "proj_123",
                 "name": "My Project",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "enable_signed_ingest": false
             }));
         });
 
@@ -298,20 +298,18 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(GET).path("/v1/projects");
             then.status(200).json_body(json!({
-                "data": [
-                    {"id":"p1","name":"Proj 1","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"},
-                    {"id":"p2","name":"Proj 2","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}
-                ],
-                "page": 1, "per_page": 10, "total": 2, "total_pages": 1
+                "projects": [
+                    {"project_id":"p1","name":"Proj 1","enable_signed_ingest":false},
+                    {"project_id":"p2","name":"Proj 2","enable_signed_ingest":false}
+                ]
             }));
         });
 
         let client = test_client(&server);
-        let resp = client.list_projects(None).await.unwrap();
+        let resp = client.list_projects().await.unwrap();
 
         mock.assert();
-        assert_eq!(resp.data.len(), 2);
-        assert_eq!(resp.total, 2);
+        assert_eq!(resp.projects.len(), 2);
     }
 
     #[tokio::test]
@@ -322,17 +320,15 @@ mod tests {
                 .path("/v1/projects")
                 .json_body(json!({"name": "my-project"}));
             then.status(201).json_body(json!({
-                "id": "proj_new",
+                "project_id": "proj_new",
                 "name": "my-project",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "enable_signed_ingest": false
             }));
         });
 
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "my-project".to_string(),
-            description: None,
         };
         let project = client.create_project(&input).await.unwrap();
 
@@ -348,17 +344,18 @@ mod tests {
                 .path("/v1/projects/proj_123")
                 .json_body(json!({"name": "Updated Name"}));
             then.status(200).json_body(json!({
-                "id": "proj_123",
+                "project_id": "proj_123",
                 "name": "Updated Name",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "enable_signed_ingest": false
             }));
         });
 
         let client = test_client(&server);
         let input = UpdateProjectInput {
             name: Some("Updated Name".to_string()),
-            description: None,
+            slack_webhook_url: None,
+            trace_id_url_template: None,
+            enable_signed_ingest: None,
         };
         let project = client.update_project("proj_123", &input).await.unwrap();
 
@@ -394,16 +391,13 @@ mod tests {
                 .header("Authorization", "Bearer eb_admin_test");
             then.status(201).json_body(json!({
                 "id": "breaker_456",
-                "project_id": "proj_123",
                 "name": "api-latency",
-                "kind": "standard",
+                "kind": "error_rate",
                 "metric": "p99_latency",
                 "threshold": 500.0,
                 "op": "gt",
-                "window_size": 300,
-                "min_samples": 100,
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "window_ms": 300000,
+                "min_count": 100
             }));
         });
 
@@ -411,15 +405,20 @@ mod tests {
         let input = CreateBreakerInput {
             name: "api-latency".to_string(),
             metric: "p99_latency".to_string(),
+            kind: BreakerKind::ErrorRate,
+            kind_params: None,
             threshold: 500.0,
             op: BreakerOp::Gt,
-            window_size: 300,
-            min_samples: 100,
-            kind: None,
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
+            window_ms: Some(300000),
+            min_count: Some(100),
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
             metadata: None,
         };
         let breaker = client.create_breaker("proj_123", &input).await.unwrap();
@@ -430,38 +429,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_breakers_with_query_params() {
+    async fn list_breakers_returns_response() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/v1/projects/proj_123/breakers")
-                .query_param("page", "1")
-                .query_param("per_page", "10");
+            when.method(GET).path("/v1/projects/proj_123/breakers");
             then.status(200).json_body(json!({
-                "data": [
+                "breakers": [
                     {
-                        "id": "b1", "project_id": "proj_123", "name": "breaker-1",
-                        "kind": "standard", "metric": "latency", "threshold": 100.0,
-                        "op": "gt", "window_size": 60, "min_samples": 10,
-                        "created_at": "2024-01-01T00:00:00Z", "updated_at": "2024-01-01T00:00:00Z"
+                        "id": "b1", "name": "breaker-1",
+                        "kind": "error_rate", "metric": "latency", "threshold": 100.0,
+                        "op": "gt"
                     }
                 ],
-                "page": 1, "per_page": 10, "total": 1, "total_pages": 1
+                "count": 1
             }));
         });
 
         let client = test_client(&server);
-        let params = ListParams {
-            page: Some(1),
-            per_page: Some(10),
-        };
-        let resp = client
-            .list_breakers("proj_123", Some(&params))
-            .await
-            .unwrap();
+        let resp = client.list_breakers("proj_123", None).await.unwrap();
 
         mock.assert();
-        assert_eq!(resp.data.len(), 1);
+        assert_eq!(resp.breakers.len(), 1);
+        assert_eq!(resp.count, 1);
     }
 
     #[tokio::test]
@@ -488,30 +477,28 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(POST)
                 .path("/v1/projects/proj_123/routers")
-                .json_body(json!({"name": "my-router", "mode": "round_robin"}));
+                .json_body(json!({"name": "my-router", "mode": "static"}));
             then.status(201).json_body(json!({
                 "id": "router_789",
-                "project_id": "proj_123",
                 "name": "my-router",
-                "mode": "round_robin",
-                "breaker_ids": [],
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "mode": "static",
+                "enabled": true
             }));
         });
 
         let client = test_client(&server);
         let input = CreateRouterInput {
             name: "my-router".to_string(),
+            mode: RouterMode::Static,
             description: None,
-            mode: Some(RouterMode::RoundRobin),
+            enabled: None,
             metadata: None,
         };
         let router = client.create_router("proj_123", &input).await.unwrap();
 
         mock.assert();
         assert_eq!(router.id, "router_789");
-        assert_eq!(router.mode, RouterMode::RoundRobin);
+        assert_eq!(router.mode, RouterMode::Static);
     }
 
     #[tokio::test]
@@ -546,9 +533,8 @@ mod tests {
                 "id": "nc_1",
                 "project_id": "proj_123",
                 "name": "slack-alerts",
-                "channel_type": "slack",
-                "events": ["breaker_opened", "breaker_closed"],
-                "breaker_ids": [],
+                "channel": "slack",
+                "events": ["trip", "recover"],
                 "enabled": true,
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-01T00:00:00Z"
@@ -558,13 +544,12 @@ mod tests {
         let client = test_client(&server);
         let input = CreateNotificationChannelInput {
             name: "slack-alerts".to_string(),
-            channel_type: NotificationChannelType::Slack,
+            channel: NotificationChannelType::Slack,
             config: None,
             events: Some(vec![
-                NotificationEventType::BreakerOpened,
-                NotificationEventType::BreakerClosed,
+                NotificationEventType::Trip,
+                NotificationEventType::Recover,
             ]),
-            breaker_ids: None,
             enabled: None,
         };
         let channel = client
@@ -573,7 +558,7 @@ mod tests {
             .unwrap();
 
         mock.assert();
-        assert_eq!(channel.channel_type, NotificationChannelType::Slack);
+        assert_eq!(channel.channel, NotificationChannelType::Slack);
         assert_eq!(channel.events.len(), 2);
     }
 
@@ -585,21 +570,23 @@ mod tests {
                 .path("/v1/projects/proj_123/events")
                 .query_param("breaker_id", "b_456");
             then.status(200).json_body(json!({
-                "data": [
+                "events": [
                     {
                         "id": "ev_1", "project_id": "proj_123",
-                        "event_type": "breaker_opened",
                         "breaker_id": "b_456",
-                        "created_at": "2024-01-01T00:00:00Z"
+                        "from_state": "closed",
+                        "to_state": "open",
+                        "timestamp": "2024-01-01T00:00:00Z"
                     },
                     {
                         "id": "ev_2", "project_id": "proj_123",
-                        "event_type": "breaker_closed",
                         "breaker_id": "b_456",
-                        "created_at": "2024-01-02T00:00:00Z"
+                        "from_state": "open",
+                        "to_state": "closed",
+                        "timestamp": "2024-01-02T00:00:00Z"
                     }
                 ],
-                "page": 1, "per_page": 10, "total": 2, "total_pages": 1
+                "returned": 2
             }));
         });
 
@@ -611,7 +598,8 @@ mod tests {
         let resp = client.list_events("proj_123", Some(&params)).await.unwrap();
 
         mock.assert();
-        assert_eq!(resp.data.len(), 2);
+        assert_eq!(resp.events.len(), 2);
+        assert_eq!(resp.returned, 2);
     }
 
     // ── Error Classification with Mock Servers ─────────────────────
@@ -690,7 +678,6 @@ mod tests {
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "dup".to_string(),
-            description: None,
         };
         let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_conflict());
@@ -710,7 +697,6 @@ mod tests {
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "".to_string(),
-            description: None,
         };
         let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_validation());
@@ -752,9 +738,8 @@ mod tests {
                 .header("Idempotency-Key", "idem_456")
                 .header("X-Request-ID", "trace_123");
             then.status(200).json_body(json!({
-                "id": "proj_123", "name": "Test",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "project_id": "proj_123", "name": "Test",
+                "enable_signed_ingest": false
             }));
         });
 
@@ -781,9 +766,8 @@ mod tests {
                 .path("/v1/projects/proj_123")
                 .header("X-Custom", "value");
             then.status(200).json_body(json!({
-                "id": "proj_123", "name": "Test",
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "project_id": "proj_123", "name": "Test",
+                "enable_signed_ingest": false
             }));
         });
 
@@ -810,9 +794,8 @@ mod tests {
             then.status(200)
                 .delay(std::time::Duration::from_millis(200))
                 .json_body(json!({
-                    "id": "proj_123", "name": "Test",
-                    "created_at": "2024-01-01T00:00:00Z",
-                    "updated_at": "2024-01-01T00:00:00Z"
+                    "project_id": "proj_123", "name": "Test",
+                    "enable_signed_ingest": false
                 }));
         });
 
@@ -836,12 +819,10 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
-                "id": "b1", "project_id": "proj_123", "name": "test",
-                "kind": "standard", "metric": "latency", "threshold": 100.0,
-                "op": "gt", "window_size": 60, "min_samples": 10,
-                "metadata": {"region": "us-east-1"},
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "id": "b1", "name": "test",
+                "kind": "error_rate", "metric": "latency", "threshold": 100.0,
+                "op": "gt",
+                "metadata": {"region": "us-east-1"}
             }));
         });
 
@@ -849,16 +830,24 @@ mod tests {
         let input = CreateBreakerInput {
             name: "test".to_string(),
             metric: "latency".to_string(),
+            kind: BreakerKind::ErrorRate,
+            kind_params: None,
             threshold: 100.0,
             op: BreakerOp::Gt,
-            window_size: 60,
-            min_samples: 10,
-            kind: None,
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
-            metadata: Some(serde_json::json!({"region": "us-east-1"})),
+            window_ms: Some(60000),
+            min_count: Some(10),
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
+            metadata: Some(std::collections::HashMap::from([(
+                "region".to_string(),
+                "us-east-1".to_string(),
+            )])),
         };
         let breaker = client.create_breaker("proj_123", &input).await.unwrap();
 
@@ -872,11 +861,9 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
-                "id": "b2", "project_id": "proj_123", "name": "no-meta",
-                "kind": "standard", "metric": "latency", "threshold": 100.0,
-                "op": "gt", "window_size": 60, "min_samples": 10,
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z"
+                "id": "b2", "name": "no-meta",
+                "kind": "error_rate", "metric": "latency", "threshold": 100.0,
+                "op": "gt"
             }));
         });
 
@@ -884,15 +871,20 @@ mod tests {
         let input = CreateBreakerInput {
             name: "no-meta".to_string(),
             metric: "latency".to_string(),
+            kind: BreakerKind::ErrorRate,
+            kind_params: None,
             threshold: 100.0,
             op: BreakerOp::Gt,
-            window_size: 60,
-            min_samples: 10,
-            kind: None,
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
+            window_ms: Some(60000),
+            min_count: Some(10),
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
             metadata: None,
         };
         let breaker = client.create_breaker("proj_123", &input).await.unwrap();
@@ -906,55 +898,52 @@ mod tests {
     #[tokio::test]
     async fn pager_iterates_across_pages() {
         let server = MockServer::start();
+        // Register the specific cursor mock first so it matches before the general one
         server.mock(|when, then| {
             when.method(GET)
-                .path("/v1/projects")
-                .query_param("page", "1")
-                .query_param("per_page", "2");
+                .path("/v1/projects/proj_123/events")
+                .query_param("cursor", "cursor_page2");
             then.status(200).json_body(json!({
-                "data": [
-                    {"id":"p1","name":"P1","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"},
-                    {"id":"p2","name":"P2","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}
+                "events": [
+                    {"id":"e3","project_id":"proj_123","breaker_id":"b1","from_state":"closed","to_state":"open","timestamp":"2024-01-03T00:00:00Z"}
                 ],
-                "page": 1, "per_page": 2, "total": 3, "total_pages": 2
+                "returned": 1
             }));
         });
         server.mock(|when, then| {
             when.method(GET)
-                .path("/v1/projects")
-                .query_param("page", "2")
-                .query_param("per_page", "2");
+                .path("/v1/projects/proj_123/events");
             then.status(200).json_body(json!({
-                "data": [
-                    {"id":"p3","name":"P3","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}
+                "events": [
+                    {"id":"e1","project_id":"proj_123","breaker_id":"b1","from_state":"closed","to_state":"open","timestamp":"2024-01-01T00:00:00Z"},
+                    {"id":"e2","project_id":"proj_123","breaker_id":"b1","from_state":"open","to_state":"closed","timestamp":"2024-01-02T00:00:00Z"}
                 ],
-                "page": 2, "per_page": 2, "total": 3, "total_pages": 2
+                "returned": 2,
+                "next_cursor": "cursor_page2"
             }));
         });
 
         let client = test_client(&server);
-        let mut pager = client.list_projects_pager(Some(2));
+        let mut pager = client.list_events_pager("proj_123", None);
         let all = pager.collect_all().await.unwrap();
         assert_eq!(all.len(), 3);
-        assert_eq!(all[0].id, "p1");
-        assert_eq!(all[2].id, "p3");
+        assert_eq!(all[0].id, "e1");
+        assert_eq!(all[2].id, "e3");
     }
 
     #[tokio::test]
     async fn pager_empty_result() {
         let server = MockServer::start();
         server.mock(|when, then| {
-            when.method(GET)
-                .path("/v1/projects/proj_123/breakers")
-                .query_param("page", "1");
+            when.method(GET).path("/v1/projects/proj_123/events");
             then.status(200).json_body(json!({
-                "data": [],
-                "page": 1, "per_page": 100, "total": 0, "total_pages": 0
+                "events": [],
+                "returned": 0
             }));
         });
 
         let client = test_client(&server);
-        let mut pager = client.list_breakers_pager("proj_123", None);
+        let mut pager = client.list_events_pager("proj_123", None);
         let result = pager.next().await.unwrap();
         assert!(result.is_none());
     }
