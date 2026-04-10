@@ -3,26 +3,18 @@ use super::types::*;
 use super::{AdminClient, RequestOptions};
 
 impl AdminClient {
-    pub async fn list_projects(
-        &self,
-        params: Option<&ListParams>,
-    ) -> Result<ListProjectsResponse, AdminError> {
-        self.list_projects_with_opts(params, None).await
+    pub async fn list_projects(&self) -> Result<ListProjectsResponse, AdminError> {
+        self.list_projects_with_opts(None).await
     }
 
     pub async fn list_projects_with_opts(
         &self,
-        params: Option<&ListParams>,
         opts: Option<&RequestOptions>,
     ) -> Result<ListProjectsResponse, AdminError> {
-        let url = self.url("/v1/projects");
-        let mut builder = self.http.get(&url).headers(self.auth_headers());
-        if let Some(p) = params {
-            let pairs = p.to_query_pairs();
-            if !pairs.is_empty() {
-                builder = builder.query(&pairs);
-            }
-        }
+        let builder = self
+            .http
+            .get(self.url("/v1/projects"))
+            .headers(self.auth_headers());
         self.do_request(builder, opts).await
     }
 

@@ -455,13 +455,12 @@ let client = AdminClient::builder("eb_admin_...")
     .build();
 
 // List all projects
-let projects = client.list_projects(None).await?;
+let resp = client.list_projects().await?;
 
 // Create a project
 let project = client
     .create_project(&CreateProjectInput {
         name: "prod-payments".to_string(),
-        description: None,
     })
     .await?;
 
@@ -472,8 +471,7 @@ let project = client.get_project("proj_abc123").await?;
 client.delete_project("proj_abc123", "prod-payments").await?;
 
 // List breakers
-let params = ListParams { page: Some(1), per_page: Some(100) };
-let page = client.list_breakers("proj_abc123", Some(&params)).await?;
+let resp = client.list_breakers("proj_abc123", None).await?;
 
 // Create a breaker
 let breaker = client
@@ -482,15 +480,20 @@ let breaker = client
         &CreateBreakerInput {
             name: "api-latency".to_string(),
             metric: "latency_ms".to_string(),
+            kind: BreakerKind::ErrorRate,
+            kind_params: None,
             threshold: 500.0,
             op: BreakerOp::Gt,
-            window_size: 300,
-            min_samples: 100,
-            kind: None,
-            description: None,
-            half_open_policy: None,
-            half_open_max_rate: None,
-            cooldown: None,
+            window_ms: Some(300000),
+            min_count: Some(100),
+            min_state_duration_ms: None,
+            cooldown_ms: None,
+            eval_interval_ms: None,
+            half_open_backoff_enabled: None,
+            half_open_backoff_cap_ms: None,
+            half_open_indeterminate_policy: None,
+            recovery_allow_rate_ramp_steps: None,
+            actions: None,
             metadata: None,
         },
     )
@@ -516,23 +519,23 @@ let project = client.get_project_with_opts("proj_abc123", Some(&opts)).await?;
 
 ### Pagination
 
-Every list method returns a `Page<T>` with page metadata. For iterating across all pages, use the `_pager` methods:
+Endpoints that support cursor-based pagination have `_pager` methods for automatic iteration:
 
 ```rust
 use tripswitch::admin::pager::Pager;
 
-// Iterate item-by-item across all pages
-let mut pager = client.list_breakers_pager("proj_abc123", None);
-while let Some(breaker) = pager.next().await? {
-    println!("{}: {:?}", breaker.name, breaker.metric);
+// Iterate item-by-item across all pages of events
+let mut pager = client.list_events_pager("proj_abc123", None);
+while let Some(event) = pager.next().await? {
+    println!("{}: {} → {}", event.breaker_id, event.from_state, event.to_state);
 }
 
 // Or collect everything at once
-let mut pager = client.list_routers_pager("proj_abc123", Some(50));
-let all_routers = pager.collect_all().await?;
+let mut pager = client.list_notification_channels_pager("proj_abc123", None);
+let all_channels = pager.collect_all().await?;
 ```
 
-Available pagers: `list_projects_pager`, `list_breakers_pager`, `list_routers_pager`, `list_notification_channels_pager`, `list_events_pager`.
+Available pagers: `list_notification_channels_pager`, `list_events_pager`.
 
 ### Admin Error Handling
 
