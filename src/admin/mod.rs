@@ -289,7 +289,7 @@ mod tests {
 
         mock.assert();
         assert_eq!(project.id, "proj_123");
-        assert_eq!(project.name, "My Project");
+        assert_eq!(project.name.as_deref(), Some("My Project"));
     }
 
     #[tokio::test]
@@ -329,11 +329,12 @@ mod tests {
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "my-project".to_string(),
+            workspace_id: None,
         };
         let project = client.create_project(&input).await.unwrap();
 
         mock.assert();
-        assert_eq!(project.name, "my-project");
+        assert_eq!(project.name.as_deref(), Some("my-project"));
     }
 
     #[tokio::test]
@@ -360,7 +361,7 @@ mod tests {
         let project = client.update_project("proj_123", &input).await.unwrap();
 
         mock.assert();
-        assert_eq!(project.name, "Updated Name");
+        assert_eq!(project.name.as_deref(), Some("Updated Name"));
     }
 
     #[tokio::test]
@@ -390,14 +391,16 @@ mod tests {
                 .path("/v1/projects/proj_123/breakers")
                 .header("Authorization", "Bearer eb_admin_test");
             then.status(201).json_body(json!({
-                "id": "breaker_456",
-                "name": "api-latency",
-                "kind": "error_rate",
-                "metric": "p99_latency",
-                "threshold": 500.0,
-                "op": "gt",
-                "window_ms": 300000,
-                "min_count": 100
+                "breaker": {
+                    "id": "breaker_456",
+                    "name": "api-latency",
+                    "kind": "error_rate",
+                    "metric": "p99_latency",
+                    "threshold": 500.0,
+                    "op": "gt",
+                    "window_ms": 300000,
+                    "min_count": 100
+                }
             }));
         });
 
@@ -678,6 +681,7 @@ mod tests {
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "dup".to_string(),
+            workspace_id: None,
         };
         let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_conflict());
@@ -697,6 +701,7 @@ mod tests {
         let client = test_client(&server);
         let input = CreateProjectInput {
             name: "".to_string(),
+            workspace_id: None,
         };
         let err = client.create_project(&input).await.unwrap_err();
         assert!(err.is_validation());
@@ -819,10 +824,12 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
-                "id": "b1", "name": "test",
-                "kind": "error_rate", "metric": "latency", "threshold": 100.0,
-                "op": "gt",
-                "metadata": {"region": "us-east-1"}
+                "breaker": {
+                    "id": "b1", "name": "test",
+                    "kind": "error_rate", "metric": "latency", "threshold": 100.0,
+                    "op": "gt",
+                    "metadata": {"region": "us-east-1"}
+                }
             }));
         });
 
@@ -861,9 +868,11 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.method(POST).path("/v1/projects/proj_123/breakers");
             then.status(201).json_body(json!({
-                "id": "b2", "name": "no-meta",
-                "kind": "error_rate", "metric": "latency", "threshold": 100.0,
-                "op": "gt"
+                "breaker": {
+                    "id": "b2", "name": "no-meta",
+                    "kind": "error_rate", "metric": "latency", "threshold": 100.0,
+                    "op": "gt"
+                }
             }));
         });
 

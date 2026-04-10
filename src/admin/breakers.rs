@@ -1,8 +1,26 @@
 use std::collections::HashMap;
 
+use serde::Deserialize;
+
 use super::errors::AdminError;
 use super::types::*;
 use super::{AdminClient, RequestOptions};
+
+/// Internal envelope returned by single-breaker endpoints.
+#[derive(Deserialize)]
+struct BreakerEnvelope {
+    breaker: Breaker,
+    #[serde(default)]
+    router_ids: Vec<String>,
+}
+
+fn unwrap_breaker_env(env: BreakerEnvelope) -> Breaker {
+    let mut b = env.breaker;
+    if !env.router_ids.is_empty() {
+        b.router_ids = env.router_ids;
+    }
+    b
+}
 
 impl AdminClient {
     pub async fn list_breakers(
@@ -49,7 +67,8 @@ impl AdminClient {
             .http
             .get(self.url(&format!("/v1/projects/{project_id}/breakers/{breaker_id}")))
             .headers(self.auth_headers());
-        self.do_request(builder, opts).await
+        let env: BreakerEnvelope = self.do_request(builder, opts).await?;
+        Ok(unwrap_breaker_env(env))
     }
 
     pub async fn create_breaker(
@@ -71,7 +90,8 @@ impl AdminClient {
             .post(self.url(&format!("/v1/projects/{project_id}/breakers")))
             .headers(self.auth_headers())
             .json(input);
-        self.do_request(builder, opts).await
+        let env: BreakerEnvelope = self.do_request(builder, opts).await?;
+        Ok(unwrap_breaker_env(env))
     }
 
     pub async fn update_breaker(
@@ -96,7 +116,8 @@ impl AdminClient {
             .patch(self.url(&format!("/v1/projects/{project_id}/breakers/{breaker_id}")))
             .headers(self.auth_headers())
             .json(input);
-        self.do_request(builder, opts).await
+        let env: BreakerEnvelope = self.do_request(builder, opts).await?;
+        Ok(unwrap_breaker_env(env))
     }
 
     pub async fn delete_breaker(
@@ -214,6 +235,7 @@ impl AdminClient {
             )))
             .headers(self.auth_headers())
             .json(&serde_json::json!({ "metadata": metadata }));
-        self.do_request(builder, opts).await
+        let env: BreakerEnvelope = self.do_request(builder, opts).await?;
+        Ok(unwrap_breaker_env(env))
     }
 }

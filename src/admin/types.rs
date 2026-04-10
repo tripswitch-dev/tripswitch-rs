@@ -68,7 +68,8 @@ pub enum NotificationEventType {
 pub struct Project {
     #[serde(rename = "project_id")]
     pub id: String,
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slack_webhook_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,9 +186,9 @@ pub struct ProjectKey {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_prefix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_used_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub inserted_at: Option<DateTime<Utc>>,
+    pub inserted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +211,8 @@ pub struct IngestSecretRotation {
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateProjectInput {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -379,7 +382,8 @@ pub struct Workspace {
     pub name: String,
     pub slug: String,
     pub org_id: String,
-    pub inserted_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inserted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -433,7 +437,7 @@ pub struct ListEventsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListNotificationChannelsResponse {
-    pub items: Vec<NotificationChannel>,
+    pub channels: Vec<NotificationChannel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
 }
@@ -763,6 +767,7 @@ mod tests {
     fn create_project_input_serialization() {
         let input = CreateProjectInput {
             name: "my-project".to_string(),
+            workspace_id: None,
         };
         let json = serde_json::to_string(&input).unwrap();
         assert_eq!(json, r#"{"name":"my-project"}"#);
@@ -826,7 +831,7 @@ mod tests {
         let json = r#"{"project_id":"p1","name":"Test","enable_signed_ingest":true}"#;
         let project: Project = serde_json::from_str(json).unwrap();
         assert_eq!(project.id, "p1");
-        assert_eq!(project.name, "Test");
+        assert_eq!(project.name.as_deref(), Some("Test"));
         assert!(project.enable_signed_ingest);
     }
 }

@@ -21,7 +21,7 @@ impl AdminClient {
                     .list_notification_channels(&pid, Some(&params))
                     .await?;
                 Ok(CursorPage {
-                    items: resp.items,
+                    items: resp.channels,
                     next_cursor: resp.next_cursor,
                 })
             })
