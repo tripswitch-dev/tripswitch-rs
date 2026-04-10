@@ -64,12 +64,6 @@ impl<T: Send + 'static> Pager<T> {
                 None
             };
 
-            // If we've already started and there's no next cursor, we're done
-            if self.started && cursor.is_none() && !self.buffer.is_empty() {
-                self.done = true;
-                continue;
-            }
-
             let page = (self.fetch)(cursor).await?;
             self.buffer = page.items.into();
 
