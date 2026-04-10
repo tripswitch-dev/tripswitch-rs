@@ -22,7 +22,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tripswitch = "0.1"
+tripswitch = "0.1.1"
 tokio = { version = "1", features = ["rt", "macros"] }
 ```
 
